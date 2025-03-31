@@ -1,0 +1,6 @@
+Here's an image of a symbol and a legend
+please match the symbol to the legend and give me the name of the symbol in the legend.
+Use the exact symbol name as it appears in the legend, all in uppercase
+only return the name of the symbol or No Match if there is no match
+    
+Here is the legend
