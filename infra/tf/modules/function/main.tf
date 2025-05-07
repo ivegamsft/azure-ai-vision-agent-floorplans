@@ -73,6 +73,11 @@ resource "azurerm_linux_function_app" "function" {
     "BLOB_CONNECTION_STRING"                = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/storage-connection-string)"
     "CV_ENDPOINT"                           = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/vision-endpoint)"
     "CV_KEY"                                = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/vision-key)"
+    "OPENAI_ENDPOINT"                       = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/openai-endpoint)"
+    "OPENAI_KEY"                            = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/openai-key)"
+    "CV_PROJECT_ID"                         = "azureai-vision-agent-floorplans"
+    "CV_MODEL_NAME"                         = "floorplans"
+    "OPENAI_MODEL"                          = "gpt-4v"
   }
 }
 

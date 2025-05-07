@@ -35,9 +35,11 @@ resource "azurerm_cognitive_deployment" "gpt4v" {
   name                 = "gpt-4v"
   cognitive_account_id = azurerm_cognitive_account.openai.id
   model {
+    format  = "OpenAI"
     name    = "gpt-4"
     version = "vision-preview"
   }
+
   scale {
     type = "Standard"
   }

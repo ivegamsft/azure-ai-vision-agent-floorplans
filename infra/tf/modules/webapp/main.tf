@@ -63,7 +63,7 @@ resource "azurerm_linux_web_app" "webapp" {
   app_settings = {
     "STORAGE_CONN_STR"               = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/storage-connection-string)"
     "CONTAINER_NAME"                 = "floorplans"
-    "FUNCTION_START_URL"             = "${var.function_url}/api/orchestrators/FloorPlanAnalysisOrchestrator"
+    "FUNCTION_START_URL"             = "${var.function_url}/api/orchestrators/vision_agent_orchestrator"
     "VISION_ENDPOINT"                = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/vision-endpoint)"
     "VISION_KEY"                     = "@Microsoft.KeyVault(SecretUri=${var.key_vault_id}/secrets/vision-key)"
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
