@@ -1,0 +1,45 @@
+variable "resource_group_name" {
+  description = "Name of the resource group"
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region"
+  type        = string
+}
+
+variable "resource_token" {
+  description = "The token to use for App Insights naming from the naming module"
+  type        = string
+}
+
+variable "log_analytics_token" {
+  description = "The token to use for Log Analytics workspace naming from the naming module"
+  type        = string
+}
+
+resource "azurerm_log_analytics_workspace" "workspace" {
+  name                = var.log_analytics_token
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+}
+
+resource "azurerm_application_insights" "appinsights" {
+  name                = var.resource_token
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  workspace_id        = azurerm_log_analytics_workspace.workspace.id
+  application_type    = "web"
+}
+
+output "outputs" {
+  description = "All outputs from the App Insights module"
+  value = {
+    instrumentation_key = azurerm_application_insights.appinsights.instrumentation_key
+    connection_string   = azurerm_application_insights.appinsights.connection_string
+    workspace_id        = azurerm_log_analytics_workspace.workspace.id
+  }
+  sensitive = true
+}
