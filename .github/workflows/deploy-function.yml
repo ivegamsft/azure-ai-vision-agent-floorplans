@@ -16,11 +16,20 @@ permissions:
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
   PYTHON_VERSION: '3.9'
+  MAX_RETRIES: 3
+  RETRY_WAIT_SECONDS: 10
 
-jobs:
-  build-and-deploy:
+jobs:  build-and-deploy:
     runs-on: ubuntu-latest
     environment: production
+    # Make sure to add the following repository secrets:
+    # AZURE_CLIENT_ID - The Azure AD application (client) ID
+    # AZURE_TENANT_ID - Your Azure tenant ID
+    # AZURE_SUBSCRIPTION_ID - Your Azure subscription ID
+    # 
+    # And these repository variables:
+    # AZURE_FUNCTION_APP_NAME - The name of your Function App (func-6rrkwp5e-vrkj)
+    # AZURE_RESOURCE_GROUP - The name of your resource group (rg-6rrkwp5e-vrkj)
 
     steps:
       - uses: actions/checkout@v4
@@ -29,16 +38,21 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
 
       - name: Create and start virtual environment
         run: |
           python -m venv venv
           source venv/bin/activate
+          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+        continue-on-error: false
 
       - name: Azure Login using OIDC
         uses: azure/login@v1
@@ -47,9 +61,38 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Verify Function App Python version
+        run: |
+          FUNC_PYTHON_VERSION=$(az functionapp config show --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query 'linuxFxVersion' --output tsv)
+          if [[ $FUNC_PYTHON_VERSION != *"${{ env.PYTHON_VERSION }}"* ]]; then
+            echo "Error: Function App Python version does not match workflow Python version"
+            exit 1
+          fi
+
       - name: 'Deploy Function App'
         uses: Azure/functions-action@v1
+        id: deploy
         with:
           app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
           respect-funcignore: true
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
+
+      - name: Check deployment status and retry on failure
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          for i in $(seq 1 ${{ env.MAX_RETRIES }}); do
+            echo "Deployment failed. Attempt $i of ${{ env.MAX_RETRIES }}"
+            sleep ${{ env.RETRY_WAIT_SECONDS }}
+            
+            if az functionapp deployment list --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "[0].status" -o tsv | grep -q "Success"; then
+              echo "Deployment succeeded on retry $i"
+              exit 0
+            fi
+            
+            echo "Retrying deployment..."
+            az functionapp deployment source config-zip --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --src ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/package.zip
+          done
+          echo "All deployment attempts failed"
+          exit 1
