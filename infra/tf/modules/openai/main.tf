@@ -22,7 +22,7 @@ variable "sku_name" {
 resource "azurerm_cognitive_account" "openai" {
   name                = var.resource_token
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = "swedencentral"  # Using Sweden Central since it supports GPT-4V
   kind                = "OpenAI"
   sku_name            = var.sku_name
 

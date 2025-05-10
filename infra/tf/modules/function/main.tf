@@ -38,6 +38,21 @@ resource "azurerm_storage_account" "function_storage" {
   account_replication_type = "LRS"
 }
 
+resource "azurerm_storage_table" "durable_task_hub" {
+  name                 = "DurableTaskHub"
+  storage_account_name = azurerm_storage_account.function_storage.name
+}
+
+resource "azurerm_storage_table" "durable_history" {
+  name                 = "History"
+  storage_account_name = azurerm_storage_account.function_storage.name
+}
+
+resource "azurerm_storage_table" "durable_instances" {
+  name                 = "Instances"
+  storage_account_name = azurerm_storage_account.function_storage.name
+}
+
 resource "azurerm_service_plan" "plan" {
   name                = var.app_service_plan_token
   resource_group_name = var.resource_group_name
@@ -61,6 +76,7 @@ resource "azurerm_linux_function_app" "function" {
     cors {
       allowed_origins = ["*"]
     }
+    app_command_line = "python -m azure.functions.durable"
   }
 
   identity {
@@ -78,7 +94,17 @@ resource "azurerm_linux_function_app" "function" {
     "CV_PROJECT_ID"                         = "azureai-vision-agent-floorplans"
     "CV_MODEL_NAME"                         = "floorplans"
     "OPENAI_MODEL"                          = "gpt-4v"
+    "AzureWebJobsStorage"                   = azurerm_storage_account.function_storage.primary_connection_string
+    "AzureWebJobsSecretStorageType"         = "keyvault"
+    "ENABLE_ORYX_BUILD"                     = "true"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT"        = "true"
+    "PYTHON_ENABLE_WORKER_EXTENSIONS"       = "1"
+    "AzureWebJobs.DurableTaskHub.Disabled"  = "false"
+    "WEBSITE_ENABLE_SYNC_UPDATE_SITE"       = "true"
+    "WEBSITE_RUN_FROM_PACKAGE"              = "1"
   }
+
+  depends_on = [azurerm_storage_table.durable_task_hub, azurerm_storage_table.durable_history, azurerm_storage_table.durable_instances]
 }
 
 output "outputs" {

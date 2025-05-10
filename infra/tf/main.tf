@@ -54,7 +54,7 @@ module "vision" {
   source              = "./modules/vision"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
-  resource_token      = module.naming.cognitive_account.name_unique
+  resource_token      = "${substr(module.naming.cognitive_account.name_unique, 0, length(module.naming.cognitive_account.name_unique) - 5)}vis"
   sku_name            = var.vision_sku_name
 }
 
@@ -63,7 +63,7 @@ module "openai" {
   source              = "./modules/openai"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
-  resource_token      = module.naming.cognitive_account.name_unique
+  resource_token      = "${substr(module.naming.cognitive_account.name_unique, 0, length(module.naming.cognitive_account.name_unique) - 5)}oai"
   sku_name            = var.openai_sku_name
 }
 

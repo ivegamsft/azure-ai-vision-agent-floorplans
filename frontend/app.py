@@ -147,13 +147,16 @@ with tab1:
                         st.success("Analysis completed successfully!")
                         cola, colb = st.columns([2.5,1.5])
                         with cola:
+                            st.subheader("Summary")
+                            st.markdown(result["output"]["summary"])
+                            
                             st.subheader("Object Detection Output")
                             image = Image.open(fp_image)
-                            detections = result["output"]
+                            detections = result["output"]["detections"]
                             image_with_boxes = draw_bounding_boxes(image, detections)
                             st.image(image_with_boxes, caption="Detected Objects")
                         with colb:
-                            cropped_images = crop_detected_regions(image, result["output"])
+                            cropped_images = crop_detected_regions(image, result["output"]["detections"])
                             st.subheader("Outputs")
                             for cropped_img, detection in cropped_images:
                                 sub_col1, sub_col2 = st.columns([0.5,2])

@@ -96,8 +96,23 @@ def vision_agent_orchestrator(context):
             
             tasks.append(context.call_activity("azure_openai_processing", detection_payload))
     
-    results = yield context.task_all(tasks)
-    return results
+    object_results = yield context.task_all(tasks)
+    
+    # Add summarization step
+    summary_payload = {
+        "object_results": object_results,
+        "predictions": predictions,
+        "analyze_prompt": analyze_prompt
+    }
+    summary = yield context.call_activity("summarize_results", json.dumps(summary_payload))
+    
+    # Add summary to results
+    final_results = {
+        "detections": object_results,
+        "summary": summary
+    }
+    
+    return final_results
 
 # Activity
 @myApp.activity_trigger(input_name="activitypayload")
@@ -145,7 +160,6 @@ def object_detection(activitypayload):
     ]
 
     return [pred.json() for pred in predictions]
-
 
 @myApp.activity_trigger(input_name="activitypayload")
 def azure_openai_processing(activitypayload):
@@ -207,4 +221,53 @@ def azure_openai_processing(activitypayload):
             "bounding_box": json.loads(activitypayload).get("bounding_box"),
             "tag": json.loads(activitypayload).get("tag"),
             "probability": json.loads(activitypayload).get("probability")}
+
+@myApp.activity_trigger(input_name="activitypayload")
+def summarize_results(activitypayload):
+    data = json.loads(activitypayload)
+    object_results = data.get("object_results", [])
+    analyze_prompt = data.get("analyze_prompt", "")
+
+    # Create a summary prompt for OpenAI
+    detection_summary = "\n".join([
+        f"- Found {result['tag']} (confidence: {result['probability']:.2%}) identified as: {result['model_response']}"
+        for result in object_results
+    ])
+
+    client = AzureOpenAI(
+        azure_endpoint=os.environ["OPENAI_ENDPOINT"],
+        api_key=os.environ["OPENAI_KEY"],
+        api_version='2024-02-01'
+    )
+
+    summary_prompt = f"""Given the following floor plan analysis results:
+
+{detection_summary}
+
+Please provide:
+1. A concise summary of the detected elements
+2. Any patterns or notable observations
+3. Potential recommendations or concerns based on the layout
+
+Keep the response clear and structured."""
+
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an expert in analyzing floor plans and architectural layouts. Provide clear, professional insights."
+        },
+        {
+            "role": "user",
+            "content": summary_prompt
+        }
+    ]
+
+    response = client.chat.completions.create(
+        model=os.environ["OPENAI_MODEL"], 
+        messages=messages,
+        temperature=0.7,
+        max_tokens=500
+    )
+
+    return response.choices[0].message.content
 

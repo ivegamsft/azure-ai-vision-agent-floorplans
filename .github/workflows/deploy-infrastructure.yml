@@ -1,0 +1,51 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+
+permissions:
+      id-token: write
+      contents: read
+
+env:
+  TERRAFORM_DIR: './infra/tf'
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.0"
+
+      - name: Azure Login using OIDC
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: |
+          cd ${{ env.TERRAFORM_DIR }}
+          terraform init
+
+      - name: Terraform Plan
+        run: |
+          cd ${{ env.TERRAFORM_DIR }}
+          terraform plan -out tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd ${{ env.TERRAFORM_DIR }}
+          terraform apply -auto-approve tfplan

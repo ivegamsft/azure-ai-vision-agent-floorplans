@@ -29,6 +29,12 @@ resource "azurerm_storage_account" "storage" {
     type = "SystemAssigned"
   }
 
+  # Enable required features for durable functions
+  table_encryption_key_type = "Account"
+  queue_encryption_key_type = "Account"
+  is_hns_enabled           = false
+  min_tls_version          = "TLS1_2"
+
   blob_properties {
     cors_rule {
       allowed_headers    = ["*"]
