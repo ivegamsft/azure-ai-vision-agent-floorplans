@@ -19,7 +19,8 @@ env:
   MAX_RETRIES: 3
   RETRY_WAIT_SECONDS: 10
 
-jobs:  build-and-deploy:
+jobs:
+  build-and-deploy:
     runs-on: ubuntu-latest
     environment: production
     # Make sure to add the following repository secrets:
