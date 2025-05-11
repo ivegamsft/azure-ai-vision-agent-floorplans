@@ -4,8 +4,15 @@ variable "resource_group_name" {
 }
 
 variable "location" {
-  description = "Azure region"
+  description = "Azure region. Must be one of the supported regions for Azure Computer Vision."
   type        = string
+  validation {
+    condition = contains([
+      "eastus", "westus", "francecentral", "northeurope",
+      "westeurope", "southeastasia", "eastasia", "koreacentral"
+    ], lower(var.location))
+    error_message = "The location must be one of: East US, West US, France Central, North Europe, West Europe, South East Asia, East Asia, Korea Central."
+  }
 }
 
 variable "resource_token" {
@@ -39,4 +46,19 @@ output "outputs" {
     principal_id = azurerm_cognitive_account.vision.identity[0].principal_id
   }
   sensitive = true
+}
+
+//TODO: Combine all outputs into a single output block
+
+output "endpoint" {
+  value = azurerm_cognitive_account.vision.endpoint
+}
+
+output "key" {
+  value     = azurerm_cognitive_account.vision.primary_access_key
+  sensitive = true
+}
+
+output "id" {
+  value = azurerm_cognitive_account.vision.id
 }

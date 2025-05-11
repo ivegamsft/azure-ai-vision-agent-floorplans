@@ -34,7 +34,7 @@ resource "azurerm_application_insights" "appinsights" {
   application_type    = "web"
   retention_in_days   = 90
 
-  daily_data_cap_in_gb = 1
+  daily_data_cap_in_gb                  = 1
   daily_data_cap_notifications_disabled = false
 
   tags = {
@@ -45,7 +45,7 @@ resource "azurerm_application_insights" "appinsights" {
 resource "azurerm_application_insights_analytics_item" "durable_functions" {
   name                    = "durable-functions-analytics"
   application_insights_id = azurerm_application_insights.appinsights.id
-  content                = <<EOF
+  content                 = <<EOF
 requests
 | where operation_Name startswith "DurableTask"
 | extend executionId = tostring(customDimensions["prop__executionId"])
@@ -54,8 +54,8 @@ requests
 | extend durableOperationType = tostring(customDimensions["Category"])
 | order by timestamp desc
 EOF
-  scope                  = "shared"
-  type                   = "query"
+  scope                   = "shared"
+  type                    = "query"
 }
 
 output "outputs" {
@@ -66,4 +66,22 @@ output "outputs" {
     workspace_id        = azurerm_log_analytics_workspace.workspace.id
   }
   sensitive = true
+}
+
+output "instrumentation_key" {
+  value     = azurerm_application_insights.appinsights.instrumentation_key
+  sensitive = true
+}
+
+output "connection_string" {
+  value     = azurerm_application_insights.appinsights.connection_string
+  sensitive = true
+}
+
+output "app_id" {
+  value = azurerm_application_insights.appinsights.app_id
+}
+
+output "workspace_id" {
+  value = azurerm_log_analytics_workspace.workspace.id
 }

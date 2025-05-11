@@ -33,12 +33,18 @@ variable "app_service_plan_token" {
   type        = string
 }
 
+variable "python_version" {
+  description = "The version of Python to use for the web app"
+  type        = string
+  default     = "3.9"
+}
+
 resource "azurerm_service_plan" "webapp_plan" {
   name                = var.app_service_plan_token
   resource_group_name = var.resource_group_name
   location            = var.location
   os_type             = "Linux"
-  sku_name            = "P1v3"
+  sku_name            = "B1" # Basic tier to support always_on
 }
 
 resource "azurerm_linux_web_app" "webapp" {
@@ -49,7 +55,7 @@ resource "azurerm_linux_web_app" "webapp" {
 
   site_config {
     application_stack {
-      python_version = "3.9"
+      python_version = var.python_version
     }
     cors {
       allowed_origins = ["*"]
@@ -76,6 +82,6 @@ output "outputs" {
   value = {
     webapp_url   = "https://${azurerm_linux_web_app.webapp.default_hostname}"
     principal_id = azurerm_linux_web_app.webapp.identity[0].principal_id
-    app_id       = azurerm_linux_web_app.webapp.name
+    name         = azurerm_linux_web_app.webapp.name
   }
 }

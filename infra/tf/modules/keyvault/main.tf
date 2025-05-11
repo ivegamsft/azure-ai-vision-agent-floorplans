@@ -13,66 +13,122 @@ variable "resource_token" {
   type        = string
 }
 
-variable "secrets" {
-  description = "Map of secrets to store in Key Vault"
-  type = map(object({
-    value        = string
-    content_type = optional(string)
-  }))
-  sensitive = false # Changed from true to false since we handle sensitivity at the secret level
+variable "sku_name" {
+  description = "The Name of the SKU used for this Key Vault. Default: standard"
+  type        = string
+  default     = "standard"
 }
 
-variable "managed_identities" {
-  description = "List of managed identities that need access to Key Vault secrets"
-  type = list(object({
-    principal_id = string
-    name         = string
-  }))
-  default = []
+variable "enabled_for_deployment" {
+  description = "Whether Azure Virtual Machines are permitted to retrieve certificates stored as secrets from this key vault"
+  type        = bool
+  default     = false
+}
+
+variable "enabled_for_disk_encryption" {
+  description = "Whether Azure Disk Encryption is permitted to retrieve secrets from the key vault"
+  type        = bool
+  default     = false
+}
+
+variable "enabled_for_template_deployment" {
+  description = "Whether Azure Resource Manager is permitted to retrieve secrets from this key vault"
+  type        = bool
+  default     = false
+}
+
+variable "enable_rbac_authorization" {
+  description = "Whether RBAC authorization should be used for data actions instead of Access Policies"
+  type        = bool
+  default     = true
+}
+
+variable "purge_protection_enabled" {
+  description = "Whether to enable purge protection"
+  type        = bool
+  default     = false
+}
+
+variable "soft_delete_retention_days" {
+  description = "Number of days after which soft-deleted key vaults are purged"
+  type        = number
+  default     = 90
+}
+
+variable "network_acls" {
+  description = "Network rules to apply to key vault"
+  type = object({
+    bypass                     = string
+    default_action             = string
+    ip_rules                   = list(string)
+    virtual_network_subnet_ids = list(string)
+  })
+  default = {
+    bypass                     = "AzureServices"
+    default_action             = "Allow"
+    ip_rules                   = []
+    virtual_network_subnet_ids = []
+  }
+}
+
+variable "tags" {
+  description = "Tags to apply to the key vault"
+  type        = map(string)
+  default     = {}
 }
 
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_key_vault" "kv" {
-  name                       = var.resource_token
-  location                   = var.location
-  resource_group_name        = var.resource_group_name
-  tenant_id                  = data.azurerm_client_config.current.tenant_id
-  sku_name                   = "standard"
-  enable_rbac_authorization  = true
-  purge_protection_enabled   = false
-  soft_delete_retention_days = 90
+  name                            = var.resource_token
+  location                        = var.location
+  resource_group_name             = var.resource_group_name
+  tenant_id                       = data.azurerm_client_config.current.tenant_id
+  sku_name                        = var.sku_name
+  enabled_for_deployment          = var.enabled_for_deployment
+  enabled_for_disk_encryption     = var.enabled_for_disk_encryption
+  enabled_for_template_deployment = var.enabled_for_template_deployment
+  enable_rbac_authorization       = var.enable_rbac_authorization
+  purge_protection_enabled        = var.purge_protection_enabled
+  soft_delete_retention_days      = var.soft_delete_retention_days
+  tags                            = var.tags
 
   network_acls {
-    bypass         = "AzureServices"
-    default_action = "Allow"
+    bypass                     = var.network_acls.bypass
+    default_action             = var.network_acls.default_action
+    ip_rules                   = var.network_acls.ip_rules
+    virtual_network_subnet_ids = var.network_acls.virtual_network_subnet_ids
+  }
+
+  lifecycle {
+    create_before_destroy = false
   }
 }
 
-resource "azurerm_key_vault_secret" "secrets" {
-  for_each = nonsensitive(var.secrets) # Use nonsensitive() to allow for_each while still protecting values
-
-  name         = each.key
-  value        = each.value.value
-  content_type = each.value.content_type
-  key_vault_id = azurerm_key_vault.kv.id
-
-  depends_on = [azurerm_key_vault.kv]
-}
-
-# Grant Key Vault Secrets User role to managed identities
-resource "azurerm_role_assignment" "managed_identity_access" {
-  for_each = { for idx, identity in var.managed_identities : identity.name => identity }
-
+# Add current user as Key Vault Administrator
+resource "azurerm_role_assignment" "current_user_admin" {
   scope                = azurerm_key_vault.kv.id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = each.value.principal_id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = data.azurerm_client_config.current.object_id
+  description          = "Current user admin access"
 }
 
-output "outputs" {
-  description = "All outputs from the Key Vault module"
-  value = {
-    key_vault_id  = azurerm_key_vault.kv.id
-    key_vault_uri = azurerm_key_vault.kv.vault_uri
-  }
+output "key_vault_id" {
+  value = azurerm_key_vault.kv.id
+}
+
+output "key_vault_name" {
+  value = azurerm_key_vault.kv.name
+}
+
+output "key_vault_uri" {
+  value = azurerm_key_vault.kv.vault_uri
+}
+
+output "current_user_object_id" {
+  value = data.azurerm_client_config.current.object_id
+}
+
+output "admin_role_assignment_id" {
+  value = azurerm_role_assignment.current_user_admin.id
 }

@@ -12,6 +12,10 @@ resource "random_string" "suffix" {
 
 locals {
   resource_suffix = random_string.suffix.result
+  common_tags = {
+    environment = var.environment
+    workload    = "floorplans"
+  }
 }
 
 module "naming" {
@@ -20,18 +24,21 @@ module "naming" {
   suffix  = [random_string.suffix.result]
 }
 
-# Resource Group
+# Resource Group for compute resources
 resource "azurerm_resource_group" "rg" {
-  name     = module.naming.resource_group.name_unique
+  name     = "${module.naming.resource_group.name_unique}-compute"
   location = var.location
-
-  tags = {
-    environment = var.environment
-    workload    = "floorplans"
-  }
+  tags     = local.common_tags
 }
 
-# Storage Account Module
+# Resource Group for AI services
+resource "azurerm_resource_group" "rg_ai" {
+  name     = "${module.naming.resource_group.name_unique}-ai"
+  location = var.ai_services_location
+  tags     = local.common_tags
+}
+
+# Storage Account Module - Compute region
 module "storage" {
   source              = "./modules/storage"
   resource_group_name = azurerm_resource_group.rg.name
@@ -40,7 +47,9 @@ module "storage" {
   resource_token      = module.naming.storage_account.name_unique
 }
 
-# Application Insights Module
+//TODO: Add a module to add rbac roles to the storage account
+
+# Application Insights Module - Compute region
 module "appinsights" {
   source              = "./modules/appinsights"
   resource_group_name = azurerm_resource_group.rg.name
@@ -49,156 +58,119 @@ module "appinsights" {
   log_analytics_token = module.naming.log_analytics_workspace.name_unique
 }
 
-# Azure Vision Module
+# Azure OpenAI Module - AI Services region
+module "openai" {
+  source              = "./modules/openai"
+  resource_group_name = azurerm_resource_group.rg_ai.name
+  location            = var.ai_services_location
+  resource_token      = module.naming.cognitive_account.name_unique
+}
+
+# Vision Module - AI Services region
 module "vision" {
   source              = "./modules/vision"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
-  resource_token      = "${substr(module.naming.cognitive_account.name_unique, 0, length(module.naming.cognitive_account.name_unique) - 5)}vis"
+  resource_group_name = azurerm_resource_group.rg_ai.name
+  location            = var.ai_services_location
+  resource_token      = "${module.naming.cognitive_account.name_unique}-vision"
   sku_name            = var.vision_sku_name
 }
 
-# Azure OpenAI Module
-module "openai" {
-  source              = "./modules/openai"
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = var.location
-  resource_token      = "${substr(module.naming.cognitive_account.name_unique, 0, length(module.naming.cognitive_account.name_unique) - 5)}oai"
-  sku_name            = var.openai_sku_name
-}
-
-# Key Vault Module - Create before apps to store secrets
+# Key Vault Module - Compute region
 module "keyvault" {
   source              = "./modules/keyvault"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   resource_token      = module.naming.key_vault.name_unique
-
-  secrets = {
-    "storage-connection-string" = {
-      value        = module.storage.outputs.storage_account.primary_connection_string
-      content_type = "text/plain"
-    }
-    "appinsights-connection-string" = {
-      value        = module.appinsights.outputs.connection_string
-      content_type = "text/plain"
-    }
-    "vision-endpoint" = {
-      value        = module.vision.outputs.endpoint
-      content_type = "text/plain"
-    }
-    "vision-key" = {
-      value        = module.vision.outputs.key
-      content_type = "text/plain"
-    }
-    "openai-endpoint" = {
-      value        = module.openai.outputs.endpoint
-      content_type = "text/plain"
-    }
-    "openai-key" = {
-      value        = module.openai.outputs.key
-      content_type = "text/plain"
-    }
-  }
 }
 
-//TODO: Move to a role assignment module and pass in the role and principal_id as variables
-# Add current user as Key Vault Administrator
-resource "azurerm_role_assignment" "current_user_kv_admin" {
-  scope                = module.keyvault.outputs.key_vault_id
-  role_definition_name = "Key Vault Administrator"
-  principal_id         = data.azurerm_client_config.current.object_id
+# Function storage account - Compute region
+module "function_storage" {
+  source              = "./modules/storage"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = var.location
+  unique_suffix       = "${local.resource_suffix}-func"
+  resource_token      = "${module.naming.storage_account.name_unique}func"
 }
 
-//TODO: Move to a role assignment module and pass in the role and principal_id as variables
-# Add any additional Key Vault Administrators from variables
-resource "azurerm_role_assignment" "additional_kv_admins" {
-  for_each = toset(var.key_vault_admins)
+//TODO: Add a module to add rbac roles to the function storage account
 
-  scope                = module.keyvault.outputs.key_vault_id
-  role_definition_name = "Key Vault Administrator"
-  principal_id         = each.value
-}
-
-# Azure Function Module
+# Function App Module - Compute region
 module "function" {
-  source                 = "./modules/function"
-  resource_group_name    = azurerm_resource_group.rg.name
-  location               = var.location
-  unique_suffix          = local.resource_suffix
-  key_vault_id           = module.keyvault.outputs.key_vault_uri
-  resource_token         = module.naming.function_app.name_unique
-  app_service_plan_token = "${module.naming.app_service_plan.name_unique}-func"
-
-  depends_on = [module.keyvault]
+  source                             = "./modules/function"
+  resource_group_name                = azurerm_resource_group.rg.name
+  location                           = var.location
+  unique_suffix                      = local.resource_suffix
+  resource_token                     = module.naming.function_app.name_unique
+  app_service_plan_token             = "${module.naming.app_service_plan.name_unique}-func"
+  storage_account_name               = module.function_storage.storage_account_name
+  storage_account_primary_access_key = module.function_storage.storage_account_primary_access_key
+  key_vault_id                       = module.keyvault.key_vault_uri
+  depends_on                         = [module.keyvault, module.function_storage]
 }
 
-# Web App Module
+# Web App Module - Compute region
 module "webapp" {
   source                 = "./modules/webapp"
   resource_group_name    = azurerm_resource_group.rg.name
   location               = var.location
   unique_suffix          = local.resource_suffix
-  key_vault_id           = module.keyvault.outputs.key_vault_uri
-  function_url           = module.function.outputs.function_url
+  key_vault_id           = module.keyvault.key_vault_uri
+  function_url           = module.function.function_app_url
   resource_token         = module.naming.app_service.name_unique
   app_service_plan_token = "${module.naming.app_service_plan.name_unique}-web"
-
-  depends_on = [module.keyvault, module.function]
+  depends_on             = [module.keyvault, module.function]
 }
 
-//TODO: Move to a role assignment module and pass in the role and principal_id as variables
-# Update Key Vault with app identities
-resource "azurerm_role_assignment" "function_kv_access" {
-  scope                = module.keyvault.outputs.key_vault_id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = module.function.outputs.principal_id
-}
+//TODO: Add a module to add rbac roles to the web app
 
-//TODO: Move to a role assignment module and pass in the role and principal_id as variables
-resource "azurerm_role_assignment" "webapp_kv_access" {
-  scope                = module.keyvault.outputs.key_vault_id
-  role_definition_name = "Key Vault Secrets User"
-  principal_id         = module.webapp.outputs.principal_id
-}
+# Key Vault Secrets Module
+module "keyvault_secrets" {
+  source                       = "./modules/keyvault-secrets"
+  key_vault_id                 = module.keyvault.key_vault_id
+  dependent_role_assignment_id = module.keyvault.admin_role_assignment_id
 
-# Root outputs
-output "deployment_info" {
-  sensitive = true
-  value = {
-    resource_group_info = {
-      name     = azurerm_resource_group.rg.name
-      location = azurerm_resource_group.rg.location
+  secrets = {
+    "storage-connection-string" = {
+      value        = module.storage.storage_account_connection_string
+      content_type = "text/plain"
+      tags = {
+        purpose = "Storage access"
+      }
     }
-    storage_info = {
-      name                      = module.storage.outputs.storage_account.name
-      primary_connection_string = module.storage.outputs.storage_account.primary_connection_string
+    "appinsights-connection-string" = {
+      value        = module.appinsights.connection_string
+      content_type = "text/plain"
+      tags = {
+        purpose = "Application monitoring"
+      }
     }
-    application_insights = {
-      instrumentation_key = module.appinsights.outputs.instrumentation_key
-      connection_string   = module.appinsights.outputs.connection_string
+    "vision-endpoint" = {
+      value        = module.vision.endpoint
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision API access"
+      }
     }
-    vision = {
-      endpoint = module.vision.outputs.endpoint
-      key      = module.vision.outputs.key
+    "vision-key" = {
+      value        = module.vision.key
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision API access"
+      }
     }
-    openai = {
-      endpoint = module.openai.outputs.endpoint
-      key      = module.openai.outputs.key
+    "openai-endpoint" = {
+      value        = module.openai.openai.endpoint
+      content_type = "text/plain"
+      tags = {
+        purpose = "OpenAI API access"
+      }
     }
-    function = {
-      name         = module.function.outputs.app_id
-      url          = module.function.outputs.function_url
-      principal_id = module.function.outputs.principal_id
-    }
-    webapp = {
-      name         = module.webapp.outputs.app_id
-      url          = module.webapp.outputs.webapp_url
-      principal_id = module.webapp.outputs.principal_id
-    }
-    key_vault = {
-      id  = module.keyvault.outputs.key_vault_id
-      uri = module.keyvault.outputs.key_vault_uri
+    "openai-key" = {
+      value        = module.openai.openai.key
+      content_type = "text/plain"
+      tags = {
+        purpose = "OpenAI API access"
+      }
     }
   }
 }
