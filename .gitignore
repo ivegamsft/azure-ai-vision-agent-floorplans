@@ -50,8 +50,18 @@ ENV/
 *.sublime-workspace
 *.sublime-project
 
+# Sensitive Information
+service-principal-credentials.md
+*credentials*.md
+*secrets*.md
+*api-key*
+*connection-string*
+*password*
+*token*
+
 # Azure Functions
 local.settings.json
+.azure/
 *.zip
 __blobstorage__/
 __queuestorage__/
@@ -98,6 +108,7 @@ __azurite*
 test_*.py.bak*
 test_*.py.new
 test_*.py.fix
+service-principal-credentials.md
 
 # Keep
 !requirements.txt

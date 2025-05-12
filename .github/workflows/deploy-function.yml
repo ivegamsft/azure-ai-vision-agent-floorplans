@@ -4,9 +4,9 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'function_app.py'
-      - 'requirements.txt'
-      - 'host.json'
+      - 'api/function_app.py'
+      - 'api/requirements.txt'
+      - 'api/host.json'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ permissions:
       contents: read
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './api'
   PYTHON_VERSION: '3.10'
   MAX_RETRIES: 3
   RETRY_WAIT_SECONDS: 10

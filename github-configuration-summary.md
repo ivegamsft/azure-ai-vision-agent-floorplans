@@ -7,7 +7,7 @@
 
 2. **Created Documentation Files**:
    - `github-secrets-config.md`: Comprehensive list of all GitHub secrets and variables needed for the CI/CD workflows.
-   - `set-github-secrets.ps1`: PowerShell script to automate setting up the GitHub secrets and variables.
+   - `scripts/set-github-secrets.ps1`: PowerShell script to automate setting up the GitHub secrets and variables.
 
 3. **Created Service Principal for GitHub Actions**:
    - Created a service principal named "github-actions-floorplans" with Contributor access to relevant resource groups.
@@ -34,7 +34,7 @@ To enable the CI/CD workflows, the following secrets and variables need to be co
 
 ## Next Steps
 
-1. Run the `set-github-secrets.ps1` script to configure the GitHub repository.
+1. Run the `scripts/set-github-secrets.ps1` script to configure the GitHub repository.
 2. Verify the GitHub workflows run successfully after a push to the main branch.
 3. Set up branch protection rules to ensure code quality and security.
 
