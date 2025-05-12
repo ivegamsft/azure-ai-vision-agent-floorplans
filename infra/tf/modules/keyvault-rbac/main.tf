@@ -52,18 +52,16 @@ resource "azurerm_role_assignment" "managed_identity_access" {
   principal_id         = each.value.principal_id
 }
 
-output "role_assignments" {
-  description = "Map of role assignments created"
-  value = merge(
-    { for name, assignment in azurerm_role_assignment.role_assignments : name => assignment.id },
-    { for name, assignment in azurerm_role_assignment.managed_identity_access : name => assignment.id }
-  )
-}
-
-output "role_assignment_principals" {
-  description = "Map of role assignments to their principal IDs"
-  value = merge(
-    { for name, assignment in azurerm_role_assignment.role_assignments : name => assignment.principal_id },
-    { for name, assignment in azurerm_role_assignment.managed_identity_access : name => assignment.principal_id }
-  )
+output "outputs" {
+  description = "All outputs from the Key Vault RBAC module"
+  value = {
+    role_assignments = merge(
+      { for name, assignment in azurerm_role_assignment.role_assignments : name => assignment.id },
+      { for name, assignment in azurerm_role_assignment.managed_identity_access : name => assignment.id }
+    )
+    role_assignment_principals = merge(
+      { for name, assignment in azurerm_role_assignment.role_assignments : name => assignment.principal_id },
+      { for name, assignment in azurerm_role_assignment.managed_identity_access : name => assignment.principal_id }
+    )
+  }
 }

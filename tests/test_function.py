@@ -1,20 +1,43 @@
+# filepath: f:\Git\azure-ai-vision-agent-floorplans\tests\test_function.py
 import pytest
 import azure.functions as func
+import azure.durable_functions as df
 import json
 import base64
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 import os
 import sys
 from PIL import Image
 import io
 import logging
+from msrest.authentication import ApiKeyCredentials
+from openai import AzureOpenAI
 
-# Import function app for testing
+# Add the root directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from function_app import myApp
+from function_app import myApp, read_image, object_detection, summarize_results, http_start
+
+class MockDurableOrchestrationClient:
+    def __init__(self, context):
+        self._task_hub_name = "TestHub"
+        self._create_new_orchestration_url = ""
+        self._create_status_query_url = ""
+        
+    async def start_new(self, orchestration_function_name, client_input=None):
+        return "test-instance-id"
+
+    def create_check_status_response(self, request, instance_id):
+        return func.HttpResponse(
+            body=json.dumps({
+                "id": "test-instance-id",
+                "statusQueryGetUri": "https://test-status-url"
+            }),
+            status_code=202,
+            headers={"Content-Type": "application/json"}
+        )
 
 @pytest.mark.asyncio
-async def test_http_start():
+async def test_http_start(use_azure_functions_test_env):
     """Test HTTP-triggered function start"""
     # Create a mock request
     mock_req = MagicMock()
@@ -26,46 +49,73 @@ async def test_http_start():
     }).encode('utf-8')
     mock_req.route_params = {"functionName": "vision_agent_orchestrator"}
 
-    # Create a mock durable client
-    mock_client = MagicMock()
-    mock_client.start_new = AsyncMock(return_value="test-instance-id")
-    mock_client.create_check_status_response.return_value = func.HttpResponse(
-        body=json.dumps({
-            "id": "test-instance-id",
-            "statusQueryGetUri": "https://test-status-url"
-        }),
-        status_code=202,
-        headers={"Content-Type": "application/json"}
-    )
+    # Create the binding info that will be passed to http_start
+    mock_binding = {
+        "taskHubName": "TestHub",
+        "creationUrls": {"createNewInstance": "http://test"},
+        "managementUrls": {"statusQueryGetUri": "http://test"},
+        "connection": "Storage"
+    }
 
-    # Get the function from the durable app
-    http_start_func = next(f for f in myApp._functions if f.name == "http_start")
-    
-    # Test http_start function
-    result = await http_start_func.function(mock_req, client=mock_client)
-    assert result.status_code == 202
-    mock_client.start_new.assert_called_once()
+    # Create a mock durable client that returns JSON
+    with patch('function_app.credential'), \
+         patch('azure.durable_functions.DurableOrchestrationClient', MockDurableOrchestrationClient):
+        result = await http_start(req=mock_req, client=json.dumps(mock_binding))
+        
+        assert result.status_code == 202
+        response_body = json.loads(result.get_body().decode('utf-8'))
+        assert response_body['id'] == 'test-instance-id'
+        assert 'statusQueryGetUri' in response_body
 
-def test_read_image():
+class MockBlobClient:
+    def __init__(self, container_name, blob_name, credential=None, download_content=None):
+        self.container_name = container_name
+        self.blob_name = blob_name
+        self.credential = credential
+        self.download_content = download_content
+        
+    def download_blob(self):
+        if callable(self.download_content):
+            return self.download_content()
+        return self.download_content
+        
+    @classmethod
+    def from_connection_string(cls, conn_str, container_name, blob_name):
+        return cls(container_name=container_name, blob_name=blob_name)
+
+class MockBlobContentResponse:
+    def __init__(self, content):
+        self.content = content
+        
+    def readall(self):
+        return self.content
+
+def test_read_image(use_azure_functions_test_env):
+    """Test image reading from blob storage"""
     # Create test image data
-    test_image = Image.new('RGB', (100, 100), color = 'red')
+    test_image = Image.new('RGB', (100, 100), color='red')
     img_io = io.BytesIO()
     test_image.save(img_io, format='PNG')
     img_bytes = img_io.getvalue()
 
-    # Mock BlobServiceClient and its methods
-    mock_blob_client = MagicMock()
-    mock_blob_client.download_blob().readall.return_value = img_bytes
+    # Create a mock download response
+    download_content = MockBlobContentResponse(img_bytes)
+    
+    # Create a mock blob client factory
+    def create_mock_blob_client(*args, **kwargs):
+        return MockBlobClient(
+            container_name=kwargs.get('container_name', 'test-container'), 
+            blob_name=kwargs.get('blob_name', 'test.png'),
+            download_content=download_content
+        )
 
-    mock_blob_service = MagicMock()
-    mock_blob_service.get_blob_client.return_value = mock_blob_client
-
-    with patch('azure.storage.blob.BlobServiceClient.from_connection_string') as mock_blob_service_client, \
-         patch.dict(os.environ, {'BLOB_CONNECTION_STRING': 'test-conn-str'}):
-        mock_blob_service_client.return_value = mock_blob_service
+    # Patch environment and dependencies
+    with patch.dict(os.environ, {
+            'AzureWebJobsStorage': 'DefaultEndpointsProtocol=https;AccountName=test;AccountKey=test;EndpointSuffix=core.windows.net'
+        }), \
+         patch('azure.storage.blob.BlobClient', side_effect=create_mock_blob_client):
         
-        # Test read_image function
-        result = function_app.read_image(json.dumps({
+        result = read_image(json.dumps({
             "container": "test-container",
             "filename": "test.png"
         }))
@@ -74,42 +124,56 @@ def test_read_image():
         assert isinstance(result, str)
         decoded = base64.b64decode(result)
         assert len(decoded) > 0
+        
+        # Convert result back to image to verify integrity
+        img = Image.open(io.BytesIO(decoded))
+        assert img.size == (100, 100)
+        assert img.mode == 'RGB'
 
-def test_object_detection():
-    # Create a test image
-    test_image = Image.new('RGB', (100, 100), color = 'red')
+class MockResponse:
+    def __init__(self, predictions):
+        self.predictions = predictions
+
+class MockBBox:
+    def __init__(self, left, top, width, height):
+        self.left = left
+        self.top = top
+        self.width = width
+        self.height = height
+
+class MockPrediction:
+    def __init__(self, tag_name, probability, bounding_box):
+        self.tag_name = tag_name
+        self.probability = probability
+        self.bounding_box = bounding_box
+
+class MockCustomVisionPredictionClient:
+    def __init__(self, endpoint, credentials):
+        self.endpoint = endpoint
+        self.credentials = credentials
+    
+    def detect_image(self, project_id, iteration_name, image_data):
+        bbox = MockBBox(0.1, 0.1, 0.2, 0.2)
+        pred = MockPrediction("door", 0.95, bbox)
+        return MockResponse([pred])
+
+def test_object_detection(use_azure_functions_test_env):
+    """Test Custom Vision object detection"""
+    # Create test image data
+    test_image = Image.new('RGB', (100, 100), color='red')
     img_io = io.BytesIO()
     test_image.save(img_io, format='PNG')
     img_base64 = base64.b64encode(img_io.getvalue()).decode('utf-8')
 
-    # Mock CustomVisionPredictionClient and its methods
-    mock_prediction = MagicMock(
-        tag_name="door",
-        probability=0.95
-    )
-    mock_prediction.bounding_box.left = 0.1
-    mock_prediction.bounding_box.top = 0.1
-    mock_prediction.bounding_box.width = 0.2
-    mock_prediction.bounding_box.height = 0.2
-
-    mock_result = MagicMock()
-    mock_result.predictions = [mock_prediction]
-
-    # Mock the CustomVisionPredictionClient class and its methods
-    mock_predictor = MagicMock()
-    mock_predictor.detect_image.return_value = mock_result
-
-    with patch('azure.cognitiveservices.vision.customvision.prediction.CustomVisionPredictionClient', 
-              return_value=mock_predictor), \
-         patch('msrest.authentication.ApiKeyCredentials'), \
+    with patch('function_app.CustomVisionPredictionClient', MockCustomVisionPredictionClient), \
          patch.dict(os.environ, {
             'CV_ENDPOINT': 'https://test-endpoint',
             'CV_KEY': 'test-key',
             'CV_PROJECT_ID': 'test-project',
             'CV_MODEL_NAME': 'test-model'
-         }):
+        }):
         # Test object_detection function
-        result = function_app.object_detection(json.dumps({
+        result = object_detection(json.dumps({
             "image_data": img_base64
         }))
         
@@ -120,7 +184,9 @@ def test_object_detection():
         assert prediction["tag"] == "door"
         assert prediction["probability"] == 0.95
 
-def test_summarize_results():
+@patch('openai.AzureOpenAI')
+def test_summarize_results(mock_openai_class, use_azure_functions_test_env):
+    """Test OpenAI result summarization"""
     test_payload = {
         "object_results": [
             {
@@ -132,26 +198,43 @@ def test_summarize_results():
         "analyze_prompt": "Analyze this floorplan"
     }
 
-    # Mock OpenAI ChatCompletion
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock(message=MagicMock(content="Test summary"))]
+    # Create a mock completion response
+    class MockChoice:
+        def __init__(self):
+            self.message = MagicMock(content="Test summary")
+            
+    class MockCompletion:
+        def __init__(self):
+            self.model = "test-model"
+            self.choices = [MockChoice()]
+            
+    class MockChatCompletions:
+        def create(self, *args, **kwargs):
+            return MockCompletion()
+            
+    class MockChat:
+        def __init__(self):
+            self.completions = MockChatCompletions()
 
-    # Mock AzureOpenAI client
+    # Set up the mock OpenAI client
     mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = mock_response
+    mock_client.chat = MockChat()
+    mock_openai_class.return_value = mock_client
 
-    with patch('openai.AzureOpenAI', return_value=mock_client), \
-         patch.dict(os.environ, {
+    with patch.dict(os.environ, {
             'OPENAI_ENDPOINT': 'https://test-endpoint',
             'OPENAI_KEY': 'test-key',
             'OPENAI_MODEL': 'test-model'
          }):
         # Test summarize_results function
-        result = function_app.summarize_results(json.dumps(test_payload))
+        result = summarize_results(json.dumps(test_payload))
         
         # Verify the result
         assert result == "Test summary"
-        mock_client.chat.completions.create.assert_called_once()
-
-if __name__ == '__main__':
-    pytest.main([__file__])
+        
+        # Verify the OpenAI client was created with correct parameters
+        mock_openai_class.assert_called_once_with(
+            azure_endpoint=os.environ['OPENAI_ENDPOINT'],
+            api_key=os.environ['OPENAI_KEY'],
+            api_version="2023-07-01-preview"
+        )

@@ -70,7 +70,7 @@ module "openai" {
 module "vision" {
   source              = "./modules/vision"
   resource_group_name = azurerm_resource_group.rg_ai.name
-  location            = var.ai_services_location
+  location            = var.vision_ai_services_location
   resource_token      = "${module.naming.cognitive_account.name_unique}-vision"
   sku_name            = var.vision_sku_name
 }
@@ -102,9 +102,9 @@ module "function" {
   unique_suffix                      = local.resource_suffix
   resource_token                     = module.naming.function_app.name_unique
   app_service_plan_token             = "${module.naming.app_service_plan.name_unique}-func"
-  storage_account_name               = module.function_storage.storage_account_name
-  storage_account_primary_access_key = module.function_storage.storage_account_primary_access_key
-  key_vault_id                       = module.keyvault.key_vault_uri
+  storage_account_name               = module.function_storage.outputs.storage_account_name
+  storage_account_primary_access_key = module.function_storage.outputs.storage_account_primary_access_key
+  key_vault_id                       = module.keyvault.outputs.key_vault_uri
   depends_on                         = [module.keyvault, module.function_storage]
 }
 
@@ -114,8 +114,8 @@ module "webapp" {
   resource_group_name    = azurerm_resource_group.rg.name
   location               = var.location
   unique_suffix          = local.resource_suffix
-  key_vault_id           = module.keyvault.key_vault_uri
-  function_url           = module.function.function_app_url
+  key_vault_id           = module.keyvault.outputs.key_vault_uri
+  function_url           = module.function.outputs.function_app_url
   resource_token         = module.naming.app_service.name_unique
   app_service_plan_token = "${module.naming.app_service_plan.name_unique}-web"
   depends_on             = [module.keyvault, module.function]
@@ -126,33 +126,33 @@ module "webapp" {
 # Key Vault Secrets Module
 module "keyvault_secrets" {
   source                       = "./modules/keyvault-secrets"
-  key_vault_id                 = module.keyvault.key_vault_id
-  dependent_role_assignment_id = module.keyvault.admin_role_assignment_id
+  key_vault_id                 = module.keyvault.outputs.key_vault_id
+  dependent_role_assignment_id = module.keyvault.outputs.admin_role_assignment_id
 
   secrets = {
     "storage-connection-string" = {
-      value        = module.storage.storage_account_connection_string
+      value        = module.storage.outputs.storage_account_connection_string
       content_type = "text/plain"
       tags = {
         purpose = "Storage access"
       }
     }
     "appinsights-connection-string" = {
-      value        = module.appinsights.connection_string
+      value        = module.appinsights.outputs.connection_string
       content_type = "text/plain"
       tags = {
         purpose = "Application monitoring"
       }
     }
     "vision-endpoint" = {
-      value        = module.vision.endpoint
+      value        = module.vision.outputs.endpoint
       content_type = "text/plain"
       tags = {
         purpose = "Vision API access"
       }
     }
     "vision-key" = {
-      value        = module.vision.key
+      value        = module.vision.outputs.key
       content_type = "text/plain"
       tags = {
         purpose = "Vision API access"

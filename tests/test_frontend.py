@@ -7,9 +7,10 @@ import sys
 import io
 
 # Import the frontend app
-from frontend.app import upload_to_blob, start_durable_function, poll_function_status, draw_bounding_boxes
+from frontend.app import FloorplanApp
 
 def test_upload_to_blob():
+    app = FloorplanApp()
     # Mock BlobServiceClient and its methods
     mock_blob_client = MagicMock()
     mock_blob_client.url = "https://teststorage.blob.core.windows.net/container/test.png"
@@ -37,6 +38,7 @@ def test_upload_to_blob():
         mock_blob_client.upload_blob.assert_called_once()
 
 def test_start_durable_function():
+    app = FloorplanApp()
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "statusQueryGetUri": "https://function.azurewebsites.net/runtime/webhooks/durabletask/instances/123"
@@ -58,6 +60,7 @@ def test_start_durable_function():
         mock_post.assert_called_once()
 
 def test_poll_function_status():
+    app = FloorplanApp()
     mock_responses = [
         # First response - Running
         MagicMock(
@@ -89,6 +92,7 @@ def test_poll_function_status():
         assert mock_get.call_count == 2
 
 def test_draw_bounding_boxes():
+    app = FloorplanApp()
     # Create a test image
     test_image = Image.new('RGB', (100, 100), color = 'red')
     

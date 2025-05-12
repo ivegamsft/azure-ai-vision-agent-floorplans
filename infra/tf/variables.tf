@@ -12,7 +12,7 @@ variable "location" {
 
 variable "ai_services_location" {
   type        = string
-  description = "The Azure region where AI services (OpenAI, Vision) will be created"
+  description = "The Azure region where AI services (OpenAI) will be created"
   default     = "swedencentral"
   validation {
     condition = contains([
@@ -21,6 +21,21 @@ variable "ai_services_location" {
     error_message = "The AI services location must be one of: Sweden Central, West US, Japan East, or Switzerland North as these regions support GPT-4V."
   }
 }
+
+
+variable "vision_ai_services_location" {
+  type        = string
+  description = "The Azure region where Custom Vision AI services will be created"
+  default     = "westus2" // Or any other default you prefer
+  validation {
+    condition = contains([
+      "westus", "westus2", "eastus", "westeurope" 
+      // Add other valid regions for vision services if needed
+    ], lower(var.vision_ai_services_location))
+    error_message = "The Vision AI services location must be a valid region for Azure Vision services."
+  }
+}
+
 
 variable "environment" {
   type        = string

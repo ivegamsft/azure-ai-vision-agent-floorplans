@@ -64,12 +64,12 @@ resource "azurerm_service_plan" "function_plan" {
 }
 
 resource "azurerm_linux_function_app" "function" {
-  name                       = var.resource_token
-  resource_group_name        = var.resource_group_name
-  location                   = var.location
-  service_plan_id            = azurerm_service_plan.function_plan.id
-  storage_account_name       = var.storage_account_name
-  storage_account_access_key = var.storage_account_primary_access_key
+  name                          = var.resource_token
+  resource_group_name           = var.resource_group_name
+  location                      = var.location
+  service_plan_id               = azurerm_service_plan.function_plan.id
+  storage_account_name          = var.storage_account_name
+  storage_uses_managed_identity = true
 
   site_config {
     application_stack {
@@ -97,22 +97,12 @@ resource "azurerm_linux_function_app" "function" {
   depends_on = [azurerm_storage_table.durable_task_hub, azurerm_storage_table.durable_history, azurerm_storage_table.durable_instances]
 }
 
-output "name" {
-  description = "Name of the function app"
-  value       = azurerm_linux_function_app.function.name
-}
-
-output "principal_id" {
-  description = "Principal ID of the function app's managed identity"
-  value       = azurerm_linux_function_app.function.identity[0].principal_id
-}
-
-output "default_hostname" {
-  description = "Default hostname of the function app"
-  value       = azurerm_linux_function_app.function.default_hostname
-}
-
-output "function_app_url" {
-  description = "URL of the function app"
-  value       = "https://${azurerm_linux_function_app.function.default_hostname}"
+output "outputs" {
+  description = "All outputs from the Function module"
+  value = {
+    name             = azurerm_linux_function_app.function.name
+    principal_id     = azurerm_linux_function_app.function.identity[0].principal_id
+    default_hostname = azurerm_linux_function_app.function.default_hostname
+    function_app_url = "https://${azurerm_linux_function_app.function.default_hostname}"
+  }
 }

@@ -113,22 +113,13 @@ resource "azurerm_role_assignment" "current_user_admin" {
   description          = "Current user admin access"
 }
 
-output "key_vault_id" {
-  value = azurerm_key_vault.kv.id
-}
-
-output "key_vault_name" {
-  value = azurerm_key_vault.kv.name
-}
-
-output "key_vault_uri" {
-  value = azurerm_key_vault.kv.vault_uri
-}
-
-output "current_user_object_id" {
-  value = data.azurerm_client_config.current.object_id
-}
-
-output "admin_role_assignment_id" {
-  value = azurerm_role_assignment.current_user_admin.id
+output "outputs" {
+  description = "All outputs from the Key Vault module"
+  value = {
+    key_vault_id             = azurerm_key_vault.kv.id
+    key_vault_name           = azurerm_key_vault.kv.name
+    key_vault_uri            = azurerm_key_vault.kv.vault_uri
+    current_user_object_id   = data.azurerm_client_config.current.object_id
+    admin_role_assignment_id = azurerm_role_assignment.current_user_admin.id
+  }
 }

@@ -3,6 +3,7 @@ import azure.durable_functions as df
 from azure.cognitiveservices.vision.customvision.prediction import CustomVisionPredictionClient  
 from azure.storage.blob import BlobServiceClient
 from msrest.authentication import ApiKeyCredentials
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 import os
 import json
 import base64
@@ -11,11 +12,14 @@ from PIL import Image
 from io import BytesIO
 from pydantic import BaseModel
 
+# Initialize the Azure credential
+credential = DefaultAzureCredential()
+
 class BoundingBox(BaseModel):
-        left: float
-        top: float
-        width: float
-        height: float
+    left: float
+    top: float
+    width: float
+    height: float
 
 class Prediction(BaseModel):
     tag: str
@@ -121,13 +125,18 @@ def read_image(activitypayload):
     container = data.get("container")
     filename = data.get("filename")
 
-    conn_str = os.environ["BLOB_CONNECTION_STRING"]
+    # Get the storage account name from the connection string
+    storage_account_name = os.environ.get("STORAGE_ACCOUNT_NAME")
+    storage_account_url = f"https://{storage_account_name}.blob.core.windows.net"
 
-    blob_service_client = BlobServiceClient.from_connection_string(conn_str)
+    # Use managed identity to authenticate
+    blob_service_client = BlobServiceClient(
+        account_url=storage_account_url,
+        credential=credential
+    )
     blob_client = blob_service_client.get_blob_client(container=container, blob=filename)
     image_bytes = blob_client.download_blob().readall()
 
-    # Optionally encode to base64 if needed downstream
     return base64.b64encode(image_bytes).decode("utf-8")
 
 @myApp.activity_trigger(input_name="activitypayload")
@@ -136,11 +145,11 @@ def object_detection(activitypayload):
     image_data = base64.b64decode(img_data)
 
     endpoint = os.environ["CV_ENDPOINT"]
-    key = os.environ["CV_KEY"]
     project_id = os.environ["CV_PROJECT_ID"]
     model_name = os.environ["CV_MODEL_NAME"]
 
-    credentials = ApiKeyCredentials(in_headers={"Prediction-key": key})
+    # Create Custom Vision client with managed identity
+    credentials = ApiKeyCredentials(in_headers={"Prediction-key": os.environ["CV_KEY"]})  # Custom Vision still requires API key
     predictor = CustomVisionPredictionClient(endpoint, credentials)
     results = predictor.detect_image(project_id, 
                                      model_name, 
@@ -163,10 +172,11 @@ def object_detection(activitypayload):
 
 @myApp.activity_trigger(input_name="activitypayload")
 def azure_openai_processing(activitypayload):
+    # Use managed identity for Azure OpenAI
     client = AzureOpenAI(
         azure_endpoint=os.environ["OPENAI_ENDPOINT"],
-        api_key=os.environ["OPENAI_KEY"],
-        api_version='2024-02-01'
+        api_version="2024-02-01",
+        azure_ad_token_provider=credential
     )
     prompt ="""
     Here's an image of a symbol and a legend
@@ -234,10 +244,11 @@ def summarize_results(activitypayload):
         for result in object_results
     ])
 
+    # Use managed identity for Azure OpenAI
     client = AzureOpenAI(
         azure_endpoint=os.environ["OPENAI_ENDPOINT"],
-        api_key=os.environ["OPENAI_KEY"],
-        api_version='2024-02-01'
+        api_version="2024-02-01",
+        azure_ad_token_provider=credential
     )
 
     summary_prompt = f"""Given the following floor plan analysis results:

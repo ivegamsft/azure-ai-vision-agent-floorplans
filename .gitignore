@@ -25,9 +25,11 @@ MANIFEST
 .coverage.*
 .cache
 .pytest_cache/
+htmlcov/
 *.cover
 coverage.xml
 *.py,cover
+.hypothesis/
 
 # Virtual Environment
 .env
@@ -35,6 +37,7 @@ coverage.xml
 env/
 venv/
 ENV/
+.python-version
 
 # IDE - VS Code
 .vscode/*
@@ -43,6 +46,9 @@ ENV/
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+.idea/
+*.sublime-workspace
+*.sublime-project
 
 # Azure Functions
 local.settings.json
@@ -51,6 +57,10 @@ __blobstorage__/
 __queuestorage__/
 __azurite_db_*.json
 .python_packages
+bin/
+obj/
+appsettings.json
+*.user
 
 # Terraform
 **/.terraform/*
@@ -65,15 +75,33 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
+.terraform.lock.hcl
 
-# Other
-.DS_Store
-Thumbs.db
+# Temp/Backup files
 *.log
 *.bak
 *.bak[0-9]*
 *.swp
+*~
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Project specific
+*.pyc
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+__azurite*
+test_*.py.bak*
+test_*.py.new
+test_*.py.fix
+
+# Keep
+!requirements.txt
+!tests/test_*.py
+!frontend/requirements.txt
+!host.json
+!function_app.py

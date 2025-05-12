@@ -63,12 +63,10 @@ resource "azurerm_key_vault_secret" "secrets" {
   }
 }
 
-output "secret_uris" {
-  description = "Map of secret IDs"
-  value       = { for name, secret in azurerm_key_vault_secret.secrets : name => secret.id }
-}
-
-output "secret_versions" {
-  description = "Map of secret versions"
-  value       = { for name, secret in azurerm_key_vault_secret.secrets : name => secret.version }
+output "outputs" {
+  description = "All outputs from the Key Vault Secrets module"
+  value = {
+    secret_uris     = { for name, secret in azurerm_key_vault_secret.secrets : name => secret.id }
+    secret_versions = { for name, secret in azurerm_key_vault_secret.secrets : name => secret.version }
+  }
 }

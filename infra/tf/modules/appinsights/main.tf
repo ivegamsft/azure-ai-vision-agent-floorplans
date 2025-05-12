@@ -63,25 +63,8 @@ output "outputs" {
   value = {
     instrumentation_key = azurerm_application_insights.appinsights.instrumentation_key
     connection_string   = azurerm_application_insights.appinsights.connection_string
+    app_id              = azurerm_application_insights.appinsights.app_id
     workspace_id        = azurerm_log_analytics_workspace.workspace.id
   }
   sensitive = true
-}
-
-output "instrumentation_key" {
-  value     = azurerm_application_insights.appinsights.instrumentation_key
-  sensitive = true
-}
-
-output "connection_string" {
-  value     = azurerm_application_insights.appinsights.connection_string
-  sensitive = true
-}
-
-output "app_id" {
-  value = azurerm_application_insights.appinsights.app_id
-}
-
-output "workspace_id" {
-  value = azurerm_log_analytics_workspace.workspace.id
 }
