@@ -15,14 +15,13 @@ permissions:
 
 env:
   AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
-  PYTHON_VERSION: '3.9'
+  PYTHON_VERSION: '3.10'
   MAX_RETRIES: 3
   RETRY_WAIT_SECONDS: 10
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    environment: production
     # Make sure to add the following repository secrets:
     # AZURE_CLIENT_ID - The Azure AD application (client) ID
     # AZURE_TENANT_ID - Your Azure tenant ID
