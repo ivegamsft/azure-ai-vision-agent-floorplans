@@ -32,7 +32,9 @@ jobs:
     # AZURE_RESOURCE_GROUP - The name of your resource group (rg-6rrkwp5e-vrkj)
 
     steps:
-      - uses: actions/checkout@v4      - name: Setup Python ${{ env.PYTHON_VERSION }}
+      - uses: actions/checkout@v4
+
+      - name: Setup Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v4
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -44,7 +46,9 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
-          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV      - name: Install dependencies
+          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r api/requirements.txt
