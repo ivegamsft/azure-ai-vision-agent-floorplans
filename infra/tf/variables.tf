@@ -29,7 +29,7 @@ variable "vision_ai_services_location" {
   default     = "westus2" // Or any other default you prefer
   validation {
     condition = contains([
-      "westus", "westus2", "eastus", "westeurope" 
+      "westus", "westus2", "eastus", "westeurope"
       // Add other valid regions for vision services if needed
     ], lower(var.vision_ai_services_location))
     error_message = "The Vision AI services location must be a valid region for Azure Vision services."
@@ -53,6 +53,18 @@ variable "vision_sku_name" {
   type        = string
   description = "The SKU name for the Computer Vision resource"
   default     = "S1"
+}
+
+variable "vision_prediction_sku_name" {
+  type        = string
+  description = "The SKU name for the Custom Vision Prediction service"
+  default     = "F0" # Free tier by default
+}
+
+variable "vision_training_sku_name" {
+  type        = string
+  description = "The SKU name for the Custom Vision Training service"
+  default     = "F0" # Free tier by default
 }
 
 variable "key_vault_admins" {

@@ -72,6 +72,7 @@ output "outputs" {
     storage_account_name               = azurerm_storage_account.storage.name
     storage_account_primary_access_key = azurerm_storage_account.storage.primary_access_key
     storage_account_connection_string  = azurerm_storage_account.storage.primary_connection_string
+    id                                 = azurerm_storage_account.storage.id
   }
   sensitive = true
 }

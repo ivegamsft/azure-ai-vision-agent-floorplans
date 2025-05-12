@@ -12,8 +12,43 @@ from PIL import Image
 from io import BytesIO
 from pydantic import BaseModel
 
+# TODO: Add logging to ensure we can troubleshoot issues
+
 # Initialize the Azure credential
-credential = DefaultAzureCredential()
+def get_credential():
+    try:
+        # Try managed identity first
+        credential = ManagedIdentityCredential()
+        # Test the credential
+        credential.get_token("https://storage.azure.com/.default")
+        return credential
+    except Exception as e:
+        try:
+            # Fall back to DefaultAzureCredential
+            credential = DefaultAzureCredential()
+            credential.get_token("https://storage.azure.com/.default")
+            return credential
+        except Exception as e:
+            raise Exception(f"Failed to get valid credential: {str(e)}")
+
+credential = get_credential()
+
+def get_storage_client():
+    storage_account_name = os.environ.get("STORAGE_ACCOUNT_NAME")
+    if not storage_account_name:
+        # Try to get from connection string as fallback
+        conn_str = os.environ.get("AzureWebJobsStorage", "")
+        if conn_str:
+            try:
+                storage_account_name = dict(pair.split('=', 1) for pair in conn_str.split(';'))['AccountName']
+            except:
+                raise Exception("Could not determine storage account name")
+    
+    storage_account_url = f"https://{storage_account_name}.blob.core.windows.net"
+    return BlobServiceClient(
+        account_url=storage_account_url,
+        credential=credential
+    )
 
 class BoundingBox(BaseModel):
     left: float
@@ -125,17 +160,13 @@ def read_image(activitypayload):
     container = data.get("container")
     filename = data.get("filename")
 
-    # Get the storage account name from the connection string
-    storage_account_name = os.environ.get("STORAGE_ACCOUNT_NAME")
-    storage_account_url = f"https://{storage_account_name}.blob.core.windows.net"
-
-    # Use managed identity to authenticate
-    blob_service_client = BlobServiceClient(
-        account_url=storage_account_url,
-        credential=credential
-    )
-    blob_client = blob_service_client.get_blob_client(container=container, blob=filename)
-    image_bytes = blob_client.download_blob().readall()
+    try:
+        # Get blob service client using managed identity
+        blob_service_client = get_storage_client()
+        blob_client = blob_service_client.get_blob_client(container=container, blob=filename)
+        image_bytes = blob_client.download_blob().readall()
+    except Exception as e:
+        raise Exception(f"Failed to read image from blob storage: {str(e)}")
 
     return base64.b64encode(image_bytes).decode("utf-8")
 
@@ -172,12 +203,20 @@ def object_detection(activitypayload):
 
 @myApp.activity_trigger(input_name="activitypayload")
 def azure_openai_processing(activitypayload):
-    # Use managed identity for Azure OpenAI
-    client = AzureOpenAI(
-        azure_endpoint=os.environ["OPENAI_ENDPOINT"],
-        api_version="2024-02-01",
-        azure_ad_token_provider=credential
-    )
+    try:
+        # Use managed identity for Azure OpenAI
+        client = AzureOpenAI(
+            azure_endpoint=os.environ["OPENAI_ENDPOINT"],
+            api_version=os.environ.get("OPENAI_API_VERSION", "2024-02-01"),
+            azure_ad_token_provider=credential
+        )
+    except Exception as e:
+        # Fall back to API key if managed identity fails
+        client = AzureOpenAI(
+            azure_endpoint=os.environ["OPENAI_ENDPOINT"],
+            api_key=os.environ["OPENAI_KEY"],
+            api_version=os.environ.get("OPENAI_API_VERSION", "2024-02-01")
+        )
     prompt ="""
     Here's an image of a symbol and a legend
     please match the symbol to the legend and give me the name of the symbol in the legend.
@@ -247,7 +286,7 @@ def summarize_results(activitypayload):
     # Use managed identity for Azure OpenAI
     client = AzureOpenAI(
         azure_endpoint=os.environ["OPENAI_ENDPOINT"],
-        api_version="2024-02-01",
+        api_version=os.environ["OPENAI_API_VERSION"],
         azure_ad_token_provider=credential
     )
 

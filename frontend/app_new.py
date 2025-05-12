@@ -25,12 +25,9 @@ class FloorplanApp:
                 self.STORAGE_ACCOUNT = dict(pair.split('=', 1) for pair in self.STORAGE_CONN_STR.split(';'))['AccountName']
             except:
                 st.error("Could not determine storage account name")
-                  self.CONTAINER_NAME = os.getenv("CONTAINER_NAME", "floorplans")
-        
-        # Set function URL with default for local development
-        function_app_url = os.getenv("FUNCTION_APP_URL", "http://localhost:7071")
-        self.FUNCTION_START_URL = function_app_url.rstrip('/') + "/api/orchestrators/vision_agent_orchestrator"
-        st.info(f"Using Function URL: {self.FUNCTION_START_URL}")
+                
+        self.CONTAINER_NAME = os.getenv("CONTAINER_NAME", "floorplans")
+        self.FUNCTION_START_URL = os.getenv("FUNCTION_APP_URL") + "/api/orchestrators/vision_agent_orchestrator"
 
     def get_blob_service_client(self):
         try:

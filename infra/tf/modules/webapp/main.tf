@@ -52,7 +52,6 @@ resource "azurerm_linux_web_app" "webapp" {
   resource_group_name = var.resource_group_name
   location            = var.location
   service_plan_id     = azurerm_service_plan.webapp_plan.id
-
   site_config {
     application_stack {
       python_version = var.python_version
@@ -63,7 +62,8 @@ resource "azurerm_linux_web_app" "webapp" {
   }
 
   identity {
-    type = "SystemAssigned"
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.webapp_identity.id]
   }
 
   app_settings = {

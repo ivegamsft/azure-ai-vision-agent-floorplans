@@ -24,17 +24,10 @@ module "naming" {
   suffix  = [random_string.suffix.result]
 }
 
-# Resource Group for compute resources
+# Resource Group for all resources
 resource "azurerm_resource_group" "rg" {
-  name     = "${module.naming.resource_group.name_unique}-compute"
+  name     = module.naming.resource_group.name_unique
   location = var.location
-  tags     = local.common_tags
-}
-
-# Resource Group for AI services
-resource "azurerm_resource_group" "rg_ai" {
-  name     = "${module.naming.resource_group.name_unique}-ai"
-  location = var.ai_services_location
   tags     = local.common_tags
 }
 
@@ -45,9 +38,13 @@ module "storage" {
   location            = var.location
   unique_suffix       = local.resource_suffix
   resource_token      = module.naming.storage_account.name_unique
+  role_assignments = [
+    {
+      role_definition_name = "Storage Blob Data Contributor"
+      principal_id         = module.function.identity.principal_id
+    }
+  ]
 }
-
-//TODO: Add a module to add rbac roles to the storage account
 
 # Application Insights Module - Compute region
 module "appinsights" {
@@ -61,7 +58,7 @@ module "appinsights" {
 # Azure OpenAI Module - AI Services region
 module "openai" {
   source              = "./modules/openai"
-  resource_group_name = azurerm_resource_group.rg_ai.name
+  resource_group_name = azurerm_resource_group.rg.name
   location            = var.ai_services_location
   resource_token      = module.naming.cognitive_account.name_unique
 }
@@ -69,10 +66,12 @@ module "openai" {
 # Vision Module - AI Services region
 module "vision" {
   source              = "./modules/vision"
-  resource_group_name = azurerm_resource_group.rg_ai.name
+  resource_group_name = azurerm_resource_group.rg.name
   location            = var.vision_ai_services_location
   resource_token      = "${module.naming.cognitive_account.name_unique}-vision"
   sku_name            = var.vision_sku_name
+  prediction_sku_name = var.vision_prediction_sku_name
+  training_sku_name   = var.vision_training_sku_name
 }
 
 # Key Vault Module - Compute region
@@ -90,9 +89,9 @@ module "function_storage" {
   location            = var.location
   unique_suffix       = "${local.resource_suffix}-func"
   resource_token      = "${module.naming.storage_account.name_unique}func"
+  # We'll assign roles separately to break the circular dependency
+  role_assignments = []
 }
-
-//TODO: Add a module to add rbac roles to the function storage account
 
 # Function App Module - Compute region
 module "function" {
@@ -105,7 +104,25 @@ module "function" {
   storage_account_name               = module.function_storage.outputs.storage_account_name
   storage_account_primary_access_key = module.function_storage.outputs.storage_account_primary_access_key
   key_vault_id                       = module.keyvault.outputs.key_vault_uri
-  depends_on                         = [module.keyvault, module.function_storage]
+  role_assignments = [
+    {
+      scope                = module.storage.outputs.id
+      role_definition_name = "Storage Blob Data Contributor"
+    },
+    {
+      scope                = module.keyvault.outputs.key_vault_id
+      role_definition_name = "Key Vault Secrets User"
+    }
+  ]
+  depends_on = [module.keyvault, module.function_storage]
+}
+
+# Separate role assignment to break circular dependency
+resource "azurerm_role_assignment" "function_storage_role" {
+  scope                = module.function_storage.outputs.id
+  role_definition_name = "Storage Blob Data Owner"
+  principal_id         = module.function.identity.principal_id
+  depends_on           = [module.function, module.function_storage]
 }
 
 # Web App Module - Compute region
@@ -118,10 +135,18 @@ module "webapp" {
   function_url           = module.function.outputs.function_app_url
   resource_token         = module.naming.app_service.name_unique
   app_service_plan_token = "${module.naming.app_service_plan.name_unique}-web"
-  depends_on             = [module.keyvault, module.function]
+  role_assignments = [
+    {
+      scope                = module.storage.outputs.id
+      role_definition_name = "Storage Blob Data Contributor"
+    },
+    {
+      scope                = module.keyvault.outputs.key_vault_id
+      role_definition_name = "Key Vault Secrets User"
+    }
+  ]
+  depends_on = [module.keyvault, module.function]
 }
-
-//TODO: Add a module to add rbac roles to the web app
 
 # Key Vault Secrets Module
 module "keyvault_secrets" {
@@ -170,6 +195,34 @@ module "keyvault_secrets" {
       content_type = "text/plain"
       tags = {
         purpose = "OpenAI API access"
+      }
+    }
+    "vision-prediction-endpoint" = {
+      value        = module.vision.prediction.endpoint
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision Prediction API access"
+      }
+    }
+    "vision-prediction-key" = {
+      value        = module.vision.prediction.key
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision Prediction API access"
+      }
+    }
+    "vision-training-endpoint" = {
+      value        = module.vision.training.endpoint
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision Training API access"
+      }
+    }
+    "vision-training-key" = {
+      value        = module.vision.training.key
+      content_type = "text/plain"
+      tags = {
+        purpose = "Vision Training API access"
       }
     }
   }

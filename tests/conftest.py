@@ -16,5 +16,6 @@ def use_azure_functions_test_env():
     os.environ.update({
         'AzureWebJobsScriptRoot': os.path.join(project_root, 'api'),
         'AzureWebJobsStorage': 'UseDevelopmentStorage=true',
-        'FUNCTIONS_WORKER_RUNTIME': 'python'
+        'FUNCTIONS_WORKER_RUNTIME': 'python',
+        'OPENAI_API_VERSION': '2024-02-01'  # Added API version
     })

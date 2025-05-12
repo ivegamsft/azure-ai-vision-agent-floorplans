@@ -22,7 +22,7 @@ variable "principal_id" {
 
 output "outputs" {
   description = "The Role Assignment ID"
-  value       = {
+  value = {
     role_assignment_id = azurerm_role_assignment.role_assignment.id
   }
 }
