@@ -46,6 +46,38 @@ module "storage" {
   ]
 }
 
+
+# Azure OpenAI for AI Foundry
+module "aifoundry" {
+  source              = "./modules/aifoundry"
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = var.ai_services_location
+  resource_token      = "${module.naming.cognitive_account.name_unique}-aifoundry"
+  tags                = local.common_tags
+}
+
+# GPT-4 Model Deployment for AI Foundry
+module "aifoundry_project" {
+  source            = "./modules/aifoundry-project"
+  project_token     = "${module.naming.cognitive_account.name_unique}-gpt4"
+  openai_account_id = module.aifoundry.outputs.id
+  model_name        = "gpt-4"
+  model_version     = "turbo-2024-04-09"
+}
+
+# RBAC for Azure OpenAI - both function app and current user
+module "aifoundry_rbac" {
+  for_each = toset([
+    module.function.identity.principal_id,
+    data.azurerm_client_config.current.object_id
+  ])
+  source               = "./modules/rbac"
+  scope                = module.aifoundry.outputs.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = each.key
+  depends_on           = [module.aifoundry, module.function]
+}
+
 # Application Insights Module - Compute region
 module "appinsights" {
   source              = "./modules/appinsights"
@@ -63,6 +95,19 @@ module "openai" {
   resource_token      = module.naming.cognitive_account.name_unique
 }
 
+# RBAC for OpenAI service - both function app and current user
+module "openai_rbac" {
+  for_each = toset([
+    module.function.identity.principal_id,
+    data.azurerm_client_config.current.object_id
+  ])
+  source               = "./modules/rbac"
+  scope                = module.openai.openai.id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = each.key
+  depends_on           = [module.openai, module.function]
+}
+
 # Vision Module - AI Services region
 module "vision" {
   source              = "./modules/vision"
@@ -74,12 +119,38 @@ module "vision" {
   training_sku_name   = var.vision_training_sku_name
 }
 
+# RBAC for Vision service - both function app and current user
+module "vision_rbac" {
+  for_each = toset([
+    module.function.identity.principal_id,
+    data.azurerm_client_config.current.object_id
+  ])
+  source               = "./modules/rbac"
+  scope                = module.vision.outputs.id
+  role_definition_name = "Cognitive Services Custom Vision Contributor"
+  principal_id         = each.key
+  depends_on           = [module.vision, module.function]
+}
+
 # Key Vault Module - Compute region
 module "keyvault" {
   source              = "./modules/keyvault"
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   resource_token      = module.naming.key_vault.name_unique
+}
+
+# RBAC for Key Vault - both function app and current user
+module "keyvault_rbac" {
+  for_each = toset([
+    module.function.identity.principal_id,
+    data.azurerm_client_config.current.object_id
+  ])
+  source               = "./modules/rbac"
+  scope                = module.keyvault.outputs.key_vault_id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = each.key
+  depends_on           = [module.keyvault, module.function]
 }
 
 # Function storage account - Compute region
@@ -117,12 +188,22 @@ module "function" {
   depends_on = [module.keyvault, module.function_storage]
 }
 
-# Separate role assignment to break circular dependency
-resource "azurerm_role_assignment" "function_storage_role" {
+# Storage blob access for function app
+module "function_storage_rbac" {
+  source               = "./modules/rbac"
   scope                = module.function_storage.outputs.id
   role_definition_name = "Storage Blob Data Owner"
   principal_id         = module.function.identity.principal_id
   depends_on           = [module.function, module.function_storage]
+}
+
+# Storage blob access for primary storage account
+module "storage_rbac" {
+  source               = "./modules/rbac"
+  scope                = module.storage.outputs.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = module.function.identity.principal_id
+  depends_on           = [module.storage, module.function]
 }
 
 # Web App Module - Compute region
