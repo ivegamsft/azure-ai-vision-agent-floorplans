@@ -42,9 +42,14 @@ jobs:
         run: |
           cd ${{ env.TERRAFORM_DIR }}
           terraform plan -out tfplan
+      
+      # TODO: Ensure the apply has default variables set
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
         run: |
           cd ${{ env.TERRAFORM_DIR }}
           terraform apply -auto-approve tfplan
+
+
+    # TODO: Destroy the infrastructure regardless of outcome. Force remove any resources created if needed

@@ -1,0 +1,462 @@
+# Azure AI Vision Agent for Floorplans
+
+This project consists of three main components:
+
+## Project Structure
+
+### 1. Azure Function App (Python)
+Location: `/api`
+- Main file: `function_app.py`
+- Dependencies: `requirements.txt`
+- Configuration: `local.settings.json`
+
+Key Features:
+- Durable Functions orchestration
+- Azure OpenAI integration
+- Azure Custom Vision integration
+- Azure Blob Storage integration
+
+Local Development Requirements:
+- Python 3.9 (required for Azure Functions compatibility)
+- Azure Functions Core Tools v4
+- Visual Studio Code with Azure Functions extension
+- Local settings file with required environment variables
+
+To run locally:
+```powershell
+cd api
+func host start
+```
+
+### 2. Streamlit Frontend App (Python)
+Location: `/frontend`
+- Main file: `app.py`
+- Dependencies: `requirements.txt`
+
+Key Features:
+- Floorplan upload and visualization
+- Azure Blob Storage integration
+- Integration with Azure Function endpoints
+
+Local Development Requirements:
+- Python 3.9+ (for compatibility)
+- Virtual environment setup
+- `.env` file with configuration
+
+To run locally:
+```powershell
+cd frontend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+### 3. Infrastructure as Code (Terraform)
+Location: `/infra/tf`
+- Main configuration: `main.tf`
+- Variables: `terraform.tfvars`
+- Outputs: `outputs.tf`
+
+Resources Created:
+- Azure Functions App
+- Azure Storage Account
+- Azure OpenAI service
+- Azure Custom Vision service
+- Azure Key Vault
+- Application Insights
+
+Local Development Requirements:
+- Terraform CLI
+- Azure CLI with authenticated session
+- `terraform.tfvars` file with configuration
+
+To deploy infrastructure:
+```powershell
+cd infra/tf
+terraform init
+terraform plan
+terraform apply
+```
+
+## Environment Variables
+
+### Getting Cloud Settings from Terraform
+After running `terraform apply`, use the deployment_info output to configure both applications:
+
+```powershell
+# Get deployment information
+cd infra/tf
+terraform output -json deployment_info
+
+# This will output JSON containing all necessary connection strings and endpoints:
+{
+  "app_insights_connection": "...",
+  "function_app_url": "https://func-xxx.azurewebsites.net",
+  "openai_endpoint": "https://xxx.openai.azure.com/",
+  "storage_account_name": "stxxx",
+  "storage_connection_string": "DefaultEndpointsProtocol=https;...",
+  "vision_endpoint": "https://xxx.cognitiveservices.azure.com/",
+  "vision_key": "...",
+  "openai_key": "..."
+}
+```
+
+### Function App (local.settings.json)
+```json
+{
+  "Values": {
+    "AzureWebJobsStorage": "[terraform output: storage_connection_string]",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "[terraform output: app_insights_connection]",
+    "OPENAI_ENDPOINT": "[terraform output: openai_endpoint]",
+    "OPENAI_KEY": "[terraform output: openai_key]",
+    "OPENAI_MODEL": "gpt-4",
+    "STORAGE_ACCOUNT_NAME": "[terraform output: storage_account_name]",
+    "CV_KEY": "[terraform output: vision_key]",
+    "VISION_PREDICTION_ENDPOINT": "[terraform output: vision_endpoint]",
+    "CV_PROJECT_ID": "[terraform output: vision_project_id]",
+    "CV_MODEL_NAME": "[terraform output: vision_model_name]"
+  }
+}
+```
+
+### Frontend (.env)
+For local development (using local function app):
+```properties
+STORAGE_ACCOUNT_NAME=[terraform output: storage_account_name]
+STORAGE_CONNECTION_STRING=[terraform output: storage_connection_string]
+FUNCTION_APP_URL=http://localhost:7071
+```
+
+For cloud development (using deployed function app):
+```properties
+STORAGE_ACCOUNT_NAME=[terraform output: storage_account_name]
+STORAGE_CONNECTION_STRING=[terraform output: storage_connection_string]
+FUNCTION_APP_URL=[terraform output: function_app_url]
+```
+
+## Settings Name Mapping
+
+This section maps configuration names across different components of the application.
+
+### Core Settings Mapping
+
+```
+Terraform Output                 Function App Setting           Frontend Env Var            GitHub Secret
+─────────────────────────────────────────────────────────────────────────────────────────────────────────
+storage_connection_string    ->  AzureWebJobsStorage       ->  STORAGE_CONNECTION_STRING -> STORAGE_CONNECTION_STRING
+storage_account_name        ->  STORAGE_ACCOUNT_NAME      ->  STORAGE_ACCOUNT_NAME     -> STORAGE_ACCOUNT_NAME
+function_app_name           ->  WEBSITE_SITE_NAME         ->  N/A                      -> AZURE_FUNCTIONAPP_NAME
+function_app_url           ->  WEBSITE_HOSTNAME          ->  FUNCTION_APP_URL         -> FUNCTION_APP_URL
+openai_endpoint           ->  OPENAI_ENDPOINT           ->  N/A                      -> OPENAI_ENDPOINT
+openai_key               ->  OPENAI_KEY                ->  N/A                      -> OPENAI_KEY
+openai_api_version      ->  OPENAI_API_VERSION        ->  N/A                      -> OPENAI_API_VERSION
+vision_endpoint         ->  VISION_PREDICTION_ENDPOINT ->  N/A                      -> VISION_PREDICTION_ENDPOINT
+vision_key             ->  CV_KEY                    ->  N/A                      -> CV_KEY
+app_insights_key       ->  APPINSIGHTS_KEY           ->  N/A                      -> APPINSIGHTS_KEY
+app_insights_conn      ->  APPLICATIONINSIGHTS_CONNECTION_STRING -> N/A           -> APPLICATIONINSIGHTS_CONNECTION_STRING
+```
+
+### Infrastructure Definition to Runtime Mapping
+
+```hcl
+# Terraform Definition (infra/tf/main.tf)
+resource "azurerm_linux_function_app" "function" {
+  app_settings = {
+    "OPENAI_ENDPOINT"                          = azurerm_cognitive_account.openai.endpoint
+    "OPENAI_KEY"                              = azurerm_cognitive_account.openai.primary_access_key
+    "VISION_PREDICTION_ENDPOINT"               = azurerm_cognitive_account.vision.endpoint
+    "CV_KEY"                                  = azurerm_cognitive_account.vision.primary_access_key
+    "APPLICATIONINSIGHTS_CONNECTION_STRING"    = azurerm_application_insights.insights.connection_string
+    "AzureWebJobsStorage"                     = azurerm_storage_account.storage.primary_connection_string
+    "STORAGE_ACCOUNT_NAME"                    = azurerm_storage_account.storage.name
+  }
+}
+```
+
+```python
+# Function App Usage (api/function_app.py)
+storage_account_name = os.environ["STORAGE_ACCOUNT_NAME"]
+openai_endpoint = os.environ["OPENAI_ENDPOINT"]
+vision_endpoint = os.environ["VISION_PREDICTION_ENDPOINT"]
+```
+
+```python
+# Frontend Usage (frontend/app.py)
+storage_account = os.getenv("STORAGE_ACCOUNT_NAME")
+function_url = os.getenv("FUNCTION_APP_URL", "http://localhost:7071")
+```
+
+### GitHub Actions Deployment Mapping
+
+```yaml
+# .github/workflows/deploy-function.yml
+env:
+  AZURE_FUNCTIONAPP_NAME: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}    # <- terraform.function_app_name
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './api'
+  PYTHON_VERSION: '3.9'
+
+# .github/workflows/deploy-frontend.yml
+env:
+  AZURE_WEBAPP_NAME: ${{ secrets.AZURE_WEBAPP_NAME }}             # <- terraform.web_app_name
+  AZURE_WEBAPP_PACKAGE_PATH: './frontend'
+  PYTHON_VERSION: '3.9'
+```
+
+### Local Development Settings
+
+```json
+// api/local.settings.json
+{
+  "Values": {
+    "AzureWebJobsStorage": "[terraform output: storage_connection_string]",
+    "OPENAI_ENDPOINT": "[terraform output: openai_endpoint]",
+    "VISION_PREDICTION_ENDPOINT": "[terraform output: vision_endpoint]",
+    // ... other settings ...
+  }
+}
+```
+
+```properties
+# frontend/.env
+STORAGE_ACCOUNT_NAME=[terraform output: storage_account_name]
+STORAGE_CONNECTION_STRING=[terraform output: storage_connection_string]
+FUNCTION_APP_URL=http://localhost:7071  # Local development
+# FUNCTION_APP_URL=[terraform output: function_app_url]  # Cloud development
+```
+
+### Setting Update Flow
+
+1. Infrastructure Changes:
+   ```
+   Terraform Apply -> Output Values -> GitHub Secrets -> Deployment Settings
+                                  -> Local Settings
+   ```
+
+2. Local Development:
+   ```
+   terraform output -> local.settings.json
+                   -> .env
+   ```
+
+3. Cloud Deployment:
+   ```
+   GitHub Secrets -> Function App Settings
+                 -> Web App Settings
+   ```
+
+### Best Practices
+
+1. Always use terraform outputs as the source of truth
+2. Maintain consistent naming across components
+3. Use environment-specific settings files (.env.local, .env.prod)
+4. Store sensitive values in Key Vault
+5. Use managed identities where possible
+6. Document any manual setting updates in deployment guides
+
+## Switching Between Local and Cloud Environments
+
+### Local Development
+- Frontend connects to local function app (http://localhost:7071)
+- Both components use cloud storage and services from terraform deployment
+
+### Cloud Development
+1. Get the cloud settings:
+   ```powershell
+   cd infra/tf
+   terraform output -json deployment_info > deployment_info.json
+   ```
+
+2. Update the function app's local.settings.json with cloud values:
+   ```powershell
+   $config = Get-Content -Raw deployment_info.json | ConvertFrom-Json
+   $settings = Get-Content api/local.settings.json | ConvertFrom-Json
+   $settings.Values.AzureWebJobsStorage = $config.storage_connection_string
+   $settings.Values.OPENAI_ENDPOINT = $config.openai_endpoint
+   # ... update other values ...
+   $settings | ConvertTo-Json -Depth 10 | Set-Content api/local.settings.json
+   ```
+
+3. Update the frontend's .env file:
+   ```powershell
+   $config = Get-Content -Raw deployment_info.json | ConvertFrom-Json
+   @"
+   STORAGE_ACCOUNT_NAME=$($config.storage_account_name)
+   STORAGE_CONNECTION_STRING=$($config.storage_connection_string)
+   FUNCTION_APP_URL=$($config.function_app_url)
+   "@ | Set-Content frontend/.env
+   ```
+
+### Testing Cloud Configuration
+1. Update settings using the scripts above
+2. Start the frontend:
+   ```powershell
+   cd frontend
+   .venv\Scripts\activate
+   streamlit run app.py
+   ```
+3. The frontend will now connect to the cloud function app
+
+### Best Practices
+- Keep local.settings.json and .env files in .gitignore
+- Create template files (.env.template, local.settings.template.json) for reference
+- Use terraform output to maintain configuration consistency
+- Document any manual configuration steps in README.md
+
+## Deployment Architecture and Mapping
+
+### Infrastructure to Code Mapping
+
+1. Azure Function App (`/api`)
+   ```
+   Infrastructure (infra/tf)                Code (api/)                     GitHub Actions
+   ────────────────────────────────────────────────────────────────────────────────────────
+   azurerm_linux_function_app        ->     function_app.py          ->    deploy-function.yml
+   ├── app_settings                  ->     local.settings.json      ->    github secrets
+   ├── storage_account              
+   └── application_insights         
+   ```
+
+2. Frontend App (`/frontend`)
+   ```
+   Infrastructure (infra/tf)                Code (frontend/)                GitHub Actions
+   ────────────────────────────────────────────────────────────────────────────────────────
+   azurerm_linux_web_app            ->     app.py                   ->    deploy-frontend.yml
+   ├── app_settings                 ->     .env                     ->    github secrets
+   └── storage_account (shared)     ->     blob storage client
+   ```
+
+3. Shared Resources
+   ```
+   Infrastructure (infra/tf)                Code Reference                  Configuration
+   ────────────────────────────────────────────────────────────────────────────────────────
+   azurerm_storage_account          ->     STORAGE_CONNECTION_STRING ->    terraform.tfvars
+   cognitive_services_account       ->     OPENAI_ENDPOINT          ->    terraform.tfvars
+   custom_vision_account           ->     VISION_ENDPOINT          ->    terraform.tfvars
+   key_vault                       ->     (Managed Identity)       ->    terraform.tfvars
+   ```
+
+### Deployment Flow
+
+1. Infrastructure Deployment (Terraform)
+   ```mermaid
+   graph TD
+      A[terraform apply] --> B[Create Resources]
+      B --> C[Output deployment_info]
+      C --> D[Configure GitHub Secrets]
+      C --> E[Update Local Settings]
+   ```
+
+2. Application Deployment (GitHub Actions)
+   ```mermaid
+   graph TD
+      A[Push to main] --> B[Build Function]
+      A --> C[Build Frontend]
+      B --> D[Deploy Function]
+      C --> E[Deploy Frontend]
+      D --> F[Update Function Settings]
+      E --> G[Update Frontend Settings]
+   ```
+
+### Configuration Flow
+
+1. Local Development
+   ```
+   terraform output deployment_info
+           ↓
+   local.settings.json (Function)
+   .env (Frontend)
+           ↓
+   Local Function (http://localhost:7071)
+   Local Frontend (http://localhost:8501)
+   ```
+
+2. Cloud Deployment
+   ```
+   terraform output deployment_info
+           ↓
+   GitHub Secrets/Variables
+           ↓
+   GitHub Actions Deployment
+           ↓
+   Cloud Resources
+   ```
+
+### Environment Variables Mapping
+
+```
+Terraform Output              Function App              Frontend
+───────────────────────────────────────────────────────────────────
+storage_connection_string -> AzureWebJobsStorage     -> STORAGE_CONNECTION_STRING
+storage_account_name     -> STORAGE_ACCOUNT_NAME    -> STORAGE_ACCOUNT_NAME
+openai_endpoint         -> OPENAI_ENDPOINT         -> (N/A)
+openai_key             -> OPENAI_KEY              -> (N/A)
+vision_endpoint        -> VISION_PREDICTION_ENDPOINT-> (N/A)
+vision_key            -> CV_KEY                   -> (N/A)
+function_app_url      -> (N/A)                    -> FUNCTION_APP_URL
+```
+
+### GitHub Actions Secrets Required
+
+```yaml
+# Function App Deployment
+AZURE_FUNCTIONAPP_PUBLISH_PROFILE: # From Azure Portal
+AZURE_CREDENTIALS:                 # Service Principal JSON
+
+# Frontend Deployment
+AZURE_WEBAPP_PUBLISH_PROFILE:      # From Azure Portal
+AZURE_CREDENTIALS:                 # Service Principal JSON
+
+# Application Settings
+STORAGE_ACCOUNT_NAME:              # From terraform output
+STORAGE_CONNECTION_STRING:         # From terraform output
+OPENAI_ENDPOINT:                  # From terraform output
+OPENAI_KEY:                      # From terraform output
+VISION_ENDPOINT:                 # From terraform output
+CV_KEY:                         # From terraform output
+```
+
+### Service Principal Setup
+
+```powershell
+# Create Service Principal for GitHub Actions
+$sp = az ad sp create-for-rbac --name "github-actions-sp" --role contributor --scope /subscriptions/$SUBSCRIPTION_ID
+
+# Add Key Vault Access Policy
+az keyvault set-policy --name $KEY_VAULT_NAME --spn $sp.appId --secret-permissions get list
+```
+
+## Testing
+
+Unit tests are available in the `/tests` directory:
+- `test_function.py` - Function app tests
+- `test_frontend.py` - Frontend app tests
+
+To run tests:
+```powershell
+cd tests
+pytest
+```
+
+## Local Development Workflow
+
+1. Start Azure Storage Emulator (if using local storage)
+2. Start the Function App:
+   ```powershell
+   cd api
+   func host start
+   ```
+3. Start the Frontend App:
+   ```powershell
+   cd frontend
+   .venv\Scripts\activate
+   streamlit run app.py
+   ```
+4. Access the app at http://localhost:8501
+
+## Notes
+- The function app requires Python 3.9 for compatibility with Azure Functions
+- Local development can use either Azure cloud resources or emulated services
+- Make sure all required Azure services are provisioned before testing
+- The frontend can work with either local or cloud-deployed function endpoints

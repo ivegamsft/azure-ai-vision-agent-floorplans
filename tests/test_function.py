@@ -22,7 +22,8 @@ class MockDurableOrchestrationClient:
         self._create_new_orchestration_url = ""
         self._create_status_query_url = ""
         self._client_config = client_config
-        self._post_instance_url = "http://localhost:7071/api/orchestrators/vision_agent_orchestrator"
+        # Use the Azure Function URL for tests
+        self._post_instance_url = "https://func-ulc72fwx-zd61.azurewebsites.net/api/orchestrators/vision_agent_orchestrator"
         
         try:
             if isinstance(client_config, str):
@@ -38,25 +39,36 @@ class MockDurableOrchestrationClient:
 
     def get_client_input_endpoint(self):
         return self._post_instance_url
-        
-    async def start_new(self, orchestration_function_name, client_input=None):
+          async def start_new(self, orchestration_function_name, client_input=None):
+        """Start a new orchestration instance"""
         if client_input is not None:
-            await self._post_async_request(self._create_new_orchestration_url.format(name=orchestration_function_name), client_input)
+            instance_id = f"test-{orchestration_function_name}-{hash(str(client_input))}"
+            await self._post_async_request(
+                self._create_new_orchestration_url.format(name=orchestration_function_name), 
+                client_input
+            )
+            return instance_id
         return "test-instance-id"
 
     async def _post_async_request(self, url, *args, **kwargs):
+        """Simulate an HTTP POST request"""
         if not url:
             url = self._post_instance_url
-        return {"id": "test-instance-id"}
+        return {"id": "test-instance-id", "statusCode": 202, "purgeHistoryDeleteUri": "", "sendEventPostUri": ""}
 
     def create_check_status_response(self, request, instance_id):
+        """Create a mock HTTP response for the orchestration status endpoint"""
+        status_url = f"https://func-ulc72fwx-zd61.azurewebsites.net/runtime/webhooks/durabletask/instances/{instance_id}"
         return func.HttpResponse(
             body=json.dumps({
-                "id": "test-instance-id",
-                "statusQueryGetUri": "https://test-status-url"
+                "id": instance_id,
+                "statusQueryGetUri": status_url,
+                "sendEventPostUri": f"{status_url}/raiseEvent/{{eventName}}",
+                "terminatePostUri": f"{status_url}/terminate",
+                "purgeHistoryDeleteUri": f"{status_url}?purgeHistory=true"
             }),
             status_code=202,
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "Location": status_url}
         )
 
 class MockBlobContentResponse:
@@ -100,16 +112,16 @@ async def test_http_start(use_azure_functions_test_env):
         "analyze_prompt": "Test prompt"
     }).encode('utf-8')
     mock_req.route_params = {"functionName": "vision_agent_orchestrator"}
-    mock_req.url = "http://localhost:7071/api/orchestrators/vision_agent_orchestrator"
+    mock_req.url = "https://func-ulc72fwx-zd61.azurewebsites.net/api/orchestrators/vision_agent_orchestrator"
     mock_req.function_directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), "api")
     
     # Create the binding info that will be passed to http_start
     mock_binding = {
         "taskHubName": "TestHub",
         "creationUrls": {
-            "createNewInstance": "http://localhost:7071/api/orchestrators/{name}"
+            "createNewInstance": "https://func-ulc72fwx-zd61.azurewebsites.net/api/orchestrators/{name}"
         },
-        "managementUrls": {"statusQueryGetUri": "http://test"},
+        "managementUrls": {"statusQueryGetUri": "https://func-ulc72fwx-zd61.azurewebsites.net/runtime/webhooks/durabletask/instances/{id}"},
         "connection": "Storage"
     }
 
@@ -153,17 +165,16 @@ def test_read_image(mock_credential, use_azure_functions_test_env):
             credential=mock_credential,
             download_content=download_content
         )
-        return client
-
-    # Patch environment and dependencies
+        return client    # Patch environment and dependencies
     with patch.dict(os.environ, {
-            'STORAGE_ACCOUNT_NAME': 'teststorage'
+            'STORAGE_ACCOUNT_NAME': os.environ.get('STORAGE_ACCOUNT_NAME', 'stulc72fwxzd61'),
+            'CONTAINER_NAME': os.environ.get('CONTAINER_NAME', 'floorplans')
         }), \
          patch('azure.storage.blob.BlobServiceClient', side_effect=create_mock_blob_client), \
          patch('azure.storage.blob.BlobClient', MockBlobClient):
         # Test read_image function
         result = read_image(json.dumps({
-            "container": "test-container",
+            "container": os.environ.get('CONTAINER_NAME', 'floorplans'),
             "filename": "test.png"
         }))
         
@@ -210,14 +221,12 @@ def test_object_detection(use_azure_functions_test_env):
         def detect_image(self, project_id, iteration_name, image_data):
             bbox = MockBBox(0.1, 0.1, 0.2, 0.2)
             pred = MockPrediction("door", 0.95, bbox)
-            return MockResponse([pred])
-
-    with patch('api.function_app.CustomVisionPredictionClient', MockCustomVisionPredictionClient), \
+            return MockResponse([pred])    with patch('api.function_app.CustomVisionPredictionClient', MockCustomVisionPredictionClient), \
          patch.dict(os.environ, {
-            'CV_ENDPOINT': 'https://test-endpoint',
-            'CV_KEY': 'test-key',
-            'CV_PROJECT_ID': 'test-project',
-            'CV_MODEL_NAME': 'test-model'
+            'CV_ENDPOINT': os.environ.get('CV_ENDPOINT', 'https://cog-ulc72fwx-zd61-vision-vision.cognitiveservices.azure.com/'),
+            'CV_KEY': os.environ.get('CV_KEY', 'test-key'),
+            'CV_PROJECT_ID': os.environ.get('CV_PROJECT_ID', 'test-project'),
+            'CV_MODEL_NAME': os.environ.get('CV_MODEL_NAME', 'test-model')
         }):
         # Test object_detection function
         result = object_detection(json.dumps({
@@ -277,12 +286,10 @@ def test_summarize_results(mock_openai_class, mock_credential, use_azure_functio
     # Set up the mock OpenAI client
     mock_client = MagicMock()
     mock_client.chat = MockChat()
-    mock_openai_class.return_value = mock_client
-
-    with patch.dict(os.environ, {
-            'OPENAI_ENDPOINT': 'https://test-endpoint',
-            'OPENAI_MODEL': 'test-model',
-            'OPENAI_API_VERSION': '2024-02-01'
+    mock_openai_class.return_value = mock_client    with patch.dict(os.environ, {
+            'OPENAI_ENDPOINT': os.environ.get('OPENAI_ENDPOINT', 'https://test-endpoint'),
+            'OPENAI_MODEL': os.environ.get('OPENAI_MODEL', 'gpt-4o'),
+            'OPENAI_API_VERSION': os.environ.get('OPENAI_API_VERSION', '2024-02-01')
          }):
         # Test summarize_results function
         result = summarize_results(json.dumps(test_payload))

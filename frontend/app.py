@@ -10,6 +10,9 @@ from PIL import Image, ImageDraw
 import os
 from dotenv import load_dotenv
 
+# Set page configuration first
+st.set_page_config(layout="wide", page_title="Azure AI Vision Agent Floorplans", page_icon=":house_with_garden:")
+
 load_dotenv()
 
 class FloorplanApp:
@@ -18,6 +21,8 @@ class FloorplanApp:
         self.STORAGE_CONN_STR = os.getenv("STORAGE_CONNECTION_STRING")
         self.STORAGE_ACCOUNT = os.getenv("STORAGE_ACCOUNT_NAME")
         self.MANAGED_IDENTITY_CLIENT_ID = os.getenv("MANAGED_IDENTITY_CLIENT_ID")
+          # Set container name
+        self.CONTAINER_NAME = os.getenv("CONTAINER_NAME", "floorplans")
         
         if not self.STORAGE_ACCOUNT and self.STORAGE_CONN_STR:
             try:
@@ -25,7 +30,6 @@ class FloorplanApp:
                 self.STORAGE_ACCOUNT = dict(pair.split('=', 1) for pair in self.STORAGE_CONN_STR.split(';'))['AccountName']
             except:
                 st.error("Could not determine storage account name")
-                  self.CONTAINER_NAME = os.getenv("CONTAINER_NAME", "floorplans")
         
         # Set function URL with default for local development
         function_app_url = os.getenv("FUNCTION_APP_URL", "http://localhost:7071")
@@ -244,7 +248,6 @@ class FloorplanApp:
 # Rest of the UI code...
 app = FloorplanApp()
 
-st.set_page_config(layout="wide", page_title="Azure AI Vision Agent Floorplans", page_icon=":house_with_garden:")
 st.title("Azure AI Vision Agent Floorplans")
 tab1, tab2, tab3 = st.tabs(["Settings", "Floor plan Analysis Summary", "Floor plan Analysis Output"])
 

@@ -73,7 +73,7 @@ resource "azurerm_cognitive_account" "vision_training" {
   }
 }
 
-
+//TODO: Combine into one output
 output "outputs" {
   description = "All outputs from the Vision module"
   value = {

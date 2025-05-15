@@ -12,6 +12,14 @@ from PIL import Image
 from io import BytesIO
 from pydantic import BaseModel
 
+# Extension registration
+import logging
+from azure.functions import AuthLevel, FuncExtensionVersion, HttpTrigger
+from azure.functions._durable_functions import DurableClient
+
+# Set up logging
+logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
+
 # TODO: Add logging to ensure we can troubleshoot issues
 
 # Initialize the Azure credential
@@ -69,8 +77,31 @@ myApp = df.DFApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 async def http_start(req: func.HttpRequest, client):
     function_name = req.route_params.get('functionName')
     payload = json.loads(req.get_body())
+    
+    # Get base URL from the request
+    host = req.headers.get('host', 'localhost:7071')
+    scheme = req.headers.get('x-forwarded-proto', 'http')
+    base_url = f"{scheme}://{host}"
+    
+    # Create task hub config with base URL
+    task_hub_config = {
+        "taskHub": {
+            "name": "TestHubName",
+            "baseUrl": base_url
+        },
+        "durableTask": {
+            "storageProvider": {
+                "connectionStringName": "AzureWebJobsStorage"
+            }
+        }
+    }
+    
+    # Configure the durable client
+    client._config = task_hub_config
+    
     instance_id = await client.start_new(function_name, client_input=payload)
     response = client.create_check_status_response(req, instance_id)
+    
     return response
 
 # Orchestrator
@@ -175,7 +206,7 @@ def object_detection(activitypayload):
     img_data = json.loads(activitypayload).get("image_data")
     image_data = base64.b64decode(img_data)
 
-    endpoint = os.environ["CV_ENDPOINT"]
+    endpoint = os.environ["VISION_PREDICTION_ENDPOINT"]
     project_id = os.environ["CV_PROJECT_ID"]
     model_name = os.environ["CV_MODEL_NAME"]
 

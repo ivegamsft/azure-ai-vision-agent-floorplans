@@ -60,6 +60,9 @@ service-principal-credentials.md
 *connection-string*
 *password*
 *token*
+github-configuration-summary.md
+github-secrets-config.md
+federated-credential*.json
 
 # Azure Functions
 local.settings.json
@@ -68,6 +71,7 @@ local.settings.json
 __blobstorage__/
 __queuestorage__/
 __azurite_db_*.json
+__azurite_db_*_extent*.json
 AzuriteConfig/
 .python_packages
 bin/
@@ -99,6 +103,9 @@ override.tf.json
 *~
 *.tmp
 *.fix*
+*.new
+app_new.py
+*_new.*
 .DS_Store
 Thumbs.db
 desktop.ini
@@ -112,7 +119,7 @@ desktop.ini
 __azurite*
 test_*.py.bak*
 test_*.py.new
-test_*.py.fix
+test_*.py.fix*
 service-principal-credentials.md
 function-deployment.zip
 
