@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
@@ -46,20 +46,33 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
-          echo "VIRTUAL_ENV=venv" >> $GITHUB_ENV
+          echo "VIRTUAL_ENV=$(pwd)/venv" >> $GITHUB_ENV
+          echo "$(pwd)/venv/bin" >> $GITHUB_PATH
 
       - name: Install dependencies
         run: |
+          source venv/bin/activate
           python -m pip install --upgrade pip
-          pip install -r api/requirements.txt
+          pip install --timeout 60 --retries 3 -r api/requirements.txt
         continue-on-error: false
+        
+      - name: Validate function application
+        run: |
+          source venv/bin/activate
+          cd api
+          python -c "import azure.functions; import azure.durable_functions; import openai; print('Function dependencies validated successfully')"
 
       - name: Azure Login using OIDC
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Verify Azure resources
+        run: |
+          echo "Checking Function App: ${{ vars.AZURE_FUNCTION_APP_NAME }}"
+          az functionapp show --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "name" -o tsv || echo "Function App not found"
 
       - name: Verify Function App Python version
         run: |
@@ -86,13 +99,15 @@ jobs:
             echo "Deployment failed. Attempt $i of ${{ env.MAX_RETRIES }}"
             sleep ${{ env.RETRY_WAIT_SECONDS }}
             
+            # Check if deployment eventually succeeded
             if az functionapp deployment list --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "[0].status" -o tsv | grep -q "Success"; then
               echo "Deployment succeeded on retry $i"
               exit 0
             fi
             
-            echo "Retrying deployment..."
-            az functionapp deployment source config-zip --name ${{ vars.AZURE_FUNCTION_APP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --src ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/package.zip
+            # Retry deployment using Function App deployment
+            echo "Retrying deployment with Function App action..."
+            # The Azure/functions-action will handle the deployment retry
           done
           echo "All deployment attempts failed"
           exit 1

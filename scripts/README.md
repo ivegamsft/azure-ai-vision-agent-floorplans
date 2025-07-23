@@ -1,8 +1,39 @@
 # Azure AI Vision Agent Scripts
 
-This directory contains configuration scripts and sensitive information needed for setting up and maintaining the Azure AI Vision Agent for Floorplans.
+This directory contains configuration scripts and testing utilities needed for setting up and maintaining the Azure AI Vision Agent for Floorplans.
 
 ## Scripts
+
+### `test-dependencies.sh`
+
+A script to validate that all project dependencies can be installed locally. This script mirrors the dependency installation steps used in the GitHub Actions workflows.
+
+#### Usage
+
+```bash
+# From the project root directory
+./scripts/test-dependencies.sh
+```
+
+#### Requirements
+
+- Python 3.10 (preferred) or compatible Python version
+- pip package manager
+- Internet connection for downloading packages
+
+#### What it does
+
+1. Creates a temporary virtual environment
+2. Installs API dependencies from `api/requirements.txt`
+3. Validates that key API modules can be imported
+4. Installs frontend dependencies from `frontend/requirements.txt`
+5. Validates that key frontend modules can be imported
+6. Cleans up the temporary environment
+
+This script is useful for:
+- Testing dependency installation locally before pushing changes
+- Troubleshooting GitHub Actions workflow failures
+- Validating that requirements.txt files are complete and correct
 
 ### `set-github-secrets.ps1`
 
