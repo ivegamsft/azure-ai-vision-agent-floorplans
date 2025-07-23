@@ -13,7 +13,7 @@ permissions:
 
 env:
   AZURE_WEBAPP_PACKAGE_PATH: './frontend'
-  PYTHON_VERSION: '3.9'
+  PYTHON_VERSION: '3.10'
 
 jobs:
   build-and-deploy:
@@ -23,38 +23,38 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: |
             frontend/requirements.txt
 
-      - name: Create requirements.txt for frontend
+      - name: Install frontend dependencies
         run: |
           cd frontend
-          echo "streamlit" > requirements.txt
-          echo "azure-storage-blob" >> requirements.txt
-          echo "pillow" >> requirements.txt
-          echo "python-dotenv" >> requirements.txt
-          echo "requests" >> requirements.txt
-
-      - name: Create startup command file
+          pip install --timeout 60 --retries 3 -r requirements.txt
+          
+      - name: Validate frontend application
         run: |
           cd frontend
-          echo "streamlit run app.py --server.port 8000" > startup.sh
-          chmod +x startup.sh
+          python -c "import streamlit; import azure.storage.blob; import azure.identity; print('Frontend dependencies validated successfully')"
 
       - name: Azure Login using OIDC
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Verify Azure resources
+        run: |
+          echo "Checking Web App: ${{ vars.AZURE_WEBAPP_NAME }}"
+          az webapp show --name ${{ vars.AZURE_WEBAPP_NAME }} --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} --query "name" -o tsv || echo "Web App not found"
 
       - name: 'Deploy Frontend Web App'
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ vars.AZURE_WEBAPP_NAME }}
           package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
-          startup-command: "sh startup.sh"
+          startup-command: "streamlit run app.py --server.port 8000 --server.address 0.0.0.0"
